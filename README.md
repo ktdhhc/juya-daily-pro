@@ -1,6 +1,6 @@
 # Juya AI Daily Reader
 
-[橘鸦 AI 日报](https://github.com/imjuya/juya-ai-daily) 的多主题阅读前端，提供更舒适的日报阅读体验。
+[橘鸦 AI 日报](https://github.com/jujuyaya/juya-ai-daily) 的多主题阅读前端，提供更舒适的日报阅读体验。
 
 **在线地址：** https://viggoz.github.io/juya-daily/
 
@@ -53,7 +53,7 @@ npm run build
 
 ## 数据来源
 
-所有日报内容来自 [imjuya/juya-ai-daily](https://github.com/imjuya/juya-ai-daily)，通过 GitHub API 实时获取，本项目不存储任何内容数据。
+所有日报内容来自 [jujuyaya/juya-ai-daily](https://github.com/jujuyaya/juya-ai-daily)，通过 GitHub API 实时获取，本项目不存储任何内容数据。
 
 ## License
 

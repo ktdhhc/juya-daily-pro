@@ -53,7 +53,7 @@ export function Header({ mainRef, currentDate, onCalendarToggle, hasEntries }: P
             </button>
           )}
           <a
-            href="https://github.com/imjuya/juya-ai-daily"
+            href="https://github.com/jujuyaya/juya-ai-daily"
             target="_blank"
             rel="noopener noreferrer"
             className="site-github-link hover:opacity-70 flex items-center justify-center w-8 h-8"

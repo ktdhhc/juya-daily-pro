@@ -1,6 +1,6 @@
-const REPO_API = "https://api.github.com/repos/imjuya/juya-ai-daily";
+const REPO_API = "https://api.github.com/repos/jujuyaya/juya-ai-daily";
 const RAW_BASE =
-  "https://raw.githubusercontent.com/imjuya/juya-ai-daily/master/BACKUP";
+  "https://raw.githubusercontent.com/jujuyaya/juya-ai-daily/master/BACKUP";
 
 export interface DailyEntry {
   id: number;

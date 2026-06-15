@@ -243,7 +243,7 @@ export function ArticleView({ data, issueId, mainRef }: Props) {
       <footer className="mt-16 pt-6 border-t text-center text-xs" style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}>
         <p>
           内容来源：
-          <a href="https://github.com/imjuya/juya-ai-daily" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>橘鸦 AI 日报</a>
+          <a href="https://github.com/jujuyaya/juya-ai-daily" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>橘鸦 AI 日报</a>
           {" · "}AI 辅助整理，内容仅供参考
         </p>
       </footer>

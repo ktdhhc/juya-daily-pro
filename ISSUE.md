@@ -1,6 +1,6 @@
 # GitHub Issue 内容
 
-> 提交到：https://github.com/imjuya/juya-ai-daily/issues/new
+> 提交到：https://github.com/jujuyaya/juya-ai-daily/issues/new
 
 ---
 

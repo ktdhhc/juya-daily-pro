@@ -7,7 +7,7 @@ import { DatePicker } from "./DatePicker";
 import { ArticleView } from "./ArticleView";
 
 const RAW_BASE =
-  "https://raw.githubusercontent.com/imjuya/juya-ai-daily/master/BACKUP";
+  "https://raw.githubusercontent.com/jujuyaya/juya-ai-daily/master/BACKUP";
 
 interface Props {
   entries: DailyEntry[];
