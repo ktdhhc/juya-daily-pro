@@ -79,10 +79,16 @@ export function DailyPage({
     if (initialIssueId) setIssueId(initialIssueId);
   }, [initialIssueId]);
   useEffect(() => {
-    if (initialDate) setCurrentDate(initialDate);
+    if (!initialDate) return;
+    setCurrentDate(initialDate);
+    // 首次加载也把日期写进地址栏，方便直接复制分享
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get("date")) {
+      window.history.replaceState({ date: initialDate }, "", `${window.location.pathname}?date=${initialDate}`);
+    }
   }, [initialDate]);
 
-  const handleSelect = useCallback(async (entry: DailyEntry) => {
+  const handleSelect = useCallback(async (entry: DailyEntry, updateUrl = true) => {
     setLoading(true);
     setCalendarOpen(false);
     try {
@@ -92,6 +98,10 @@ export function DailyPage({
       setData(parsed);
       setIssueId(entry.id);
       setCurrentDate(entry.date);
+      // 切换时把当前期写进地址栏，形成可分享/收藏的单独链接
+      if (updateUrl) {
+        window.history.pushState({ date: entry.date }, "", `${window.location.pathname}?date=${entry.date}`);
+      }
       mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       console.error("Failed to load:", err);
@@ -99,6 +109,17 @@ export function DailyPage({
       setLoading(false);
     }
   }, []);
+
+  // 浏览器前进/后退时，按地址栏的 ?date= 切换
+  useEffect(() => {
+    const onPop = () => {
+      const wantDate = new URLSearchParams(window.location.search).get("date");
+      const entry = (wantDate && entries.find((e) => e.date === wantDate)) || entries[0];
+      if (entry && entry.id !== issueId) handleSelect(entry, false);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [entries, issueId, handleSelect]);
 
   const contentLoading = !data || loading;
 
@@ -126,7 +147,7 @@ export function DailyPage({
         ) : contentLoading ? (
           <ArticleSkeleton />
         ) : (
-          <ArticleView data={data} issueId={issueId} mainRef={mainRef} />
+          <ArticleView data={data} issueId={issueId} mainRef={mainRef} entries={entries} onSelect={handleSelect} />
         )}
       </main>
 

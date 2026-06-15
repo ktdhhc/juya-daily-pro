@@ -2,13 +2,15 @@
 
 import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ParsedDaily } from "@/lib/github";
+import { ParsedDaily, DailyEntry } from "@/lib/github";
 import { useState, useEffect, useCallback, ReactNode, RefObject } from "react";
 
 interface Props {
   data: ParsedDaily;
   issueId: number;
   mainRef?: RefObject<HTMLElement | null>;
+  entries?: DailyEntry[];
+  onSelect?: (entry: DailyEntry) => void;
 }
 
 const categoryIcons: Record<string, string> = {
@@ -112,12 +114,17 @@ function collectTocItems(data: ParsedDaily) {
   return items;
 }
 
-export function ArticleView({ data, issueId, mainRef }: Props) {
+export function ArticleView({ data, issueId, mainRef, entries = [], onSelect }: Props) {
   const [tocOpen, setTocOpen] = useState(false);
   const [showTop, setShowTop] = useState(false);
   const [currentTitle, setCurrentTitle] = useState("");
 
   const tocItems = collectTocItems(data);
+
+  // 前后一天（entries 按 id 降序：idx-1 是更新的一天，idx+1 是更早的一天）
+  const idx = entries.findIndex((e) => e.id === issueId);
+  const newer = idx > 0 ? entries[idx - 1] : null;
+  const older = idx >= 0 && idx < entries.length - 1 ? entries[idx + 1] : null;
 
   // Track scroll: show back-to-top + detect current visible heading
   const handleScroll = useCallback(() => {
@@ -238,6 +245,30 @@ export function ArticleView({ data, issueId, mainRef }: Props) {
           {preprocessRelatedLinks(data.contentAfterOverview)}
         </ReactMarkdown>
       </div>
+
+      {/* 前后一天导航 */}
+      {(older || newer) && (
+        <nav className="mt-14 grid grid-cols-2 gap-3">
+          <button
+            disabled={!older}
+            onClick={() => older && onSelect?.(older)}
+            className="prevnext-btn flex flex-col items-start gap-1 p-4 text-left rounded-xl transition-all duration-150 disabled:opacity-30 disabled:cursor-not-allowed enabled:hover:-translate-y-0.5"
+            style={{ border: "1px solid var(--border)", background: "var(--bg-card)" }}
+          >
+            <span className="text-xs font-medium" style={{ color: "var(--fg-muted)" }}>← 前一天</span>
+            {older && <span className="text-sm font-semibold" style={{ color: "var(--fg)" }}>{older.date} · 第 {older.id} 期</span>}
+          </button>
+          <button
+            disabled={!newer}
+            onClick={() => newer && onSelect?.(newer)}
+            className="prevnext-btn flex flex-col items-end gap-1 p-4 text-right rounded-xl transition-all duration-150 disabled:opacity-30 disabled:cursor-not-allowed enabled:hover:-translate-y-0.5"
+            style={{ border: "1px solid var(--border)", background: "var(--bg-card)" }}
+          >
+            <span className="text-xs font-medium" style={{ color: "var(--fg-muted)" }}>后一天 →</span>
+            {newer && <span className="text-sm font-semibold" style={{ color: "var(--fg)" }}>{newer.date} · 第 {newer.id} 期</span>}
+          </button>
+        </nav>
+      )}
 
       {/* Footer */}
       <footer className="mt-16 pt-6 border-t text-center text-xs" style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}>

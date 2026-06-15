@@ -22,10 +22,12 @@ export default function Home() {
       try {
         const list = await fetchDailyList();
         setEntries(list);
-        const latest = list[0];
-        setLatestId(latest.id);
-        setLatestDate(latest.date);
-        const content = await fetchDailyContent(latest.filename);
+        // 读地址栏 ?date= 决定初始显示哪期，没有就用最新
+        const wantDate = new URLSearchParams(window.location.search).get("date");
+        const target = (wantDate && list.find((e) => e.date === wantDate)) || list[0];
+        setLatestId(target.id);
+        setLatestDate(target.date);
+        const content = await fetchDailyContent(target.filename);
         const parsed = parseMarkdown(content);
         setData(parsed);
       } catch {
