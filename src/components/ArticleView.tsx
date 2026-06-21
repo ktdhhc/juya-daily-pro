@@ -183,13 +183,12 @@ export function ArticleView({ data, issueId, mainRef, entries = [], onSelect }: 
             {monthNames[d.getMonth()]} {d.getFullYear()}
           </span>
           <span className="h-px flex-1 divider-line" />
-          <span className="text-xs font-medium px-2 py-0.5 issue-tag">第 {issueId} 期</span>
         </div>
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight leading-tight mb-3 hero-title">
           {d.getDate()}
           <span className="text-lg md:text-xl font-normal ml-2" style={{ color: "var(--fg-muted)" }}>周{weekday}</span>
         </h1>
-        <p className="text-base mb-6 hero-subtitle">{data.title}</p>
+        {data.title && <p className="text-base mb-6 hero-subtitle">{data.title}</p>}
 
         {data.videoLinks.length > 0 && (
           <div className="flex items-center gap-3 mb-8">
@@ -256,7 +255,7 @@ export function ArticleView({ data, issueId, mainRef, entries = [], onSelect }: 
             style={{ border: "1px solid var(--border)", background: "var(--bg-card)" }}
           >
             <span className="text-xs font-medium" style={{ color: "var(--fg-muted)" }}>← 前一天</span>
-            {older && <span className="text-sm font-semibold" style={{ color: "var(--fg)" }}>{older.date} · 第 {older.id} 期</span>}
+            {older && <span className="text-sm font-semibold" style={{ color: "var(--fg)" }}>{older.date}</span>}
           </button>
           <button
             disabled={!newer}
@@ -265,7 +264,7 @@ export function ArticleView({ data, issueId, mainRef, entries = [], onSelect }: 
             style={{ border: "1px solid var(--border)", background: "var(--bg-card)" }}
           >
             <span className="text-xs font-medium" style={{ color: "var(--fg-muted)" }}>后一天 →</span>
-            {newer && <span className="text-sm font-semibold" style={{ color: "var(--fg)" }}>{newer.date} · 第 {newer.id} 期</span>}
+            {newer && <span className="text-sm font-semibold" style={{ color: "var(--fg)" }}>{newer.date}</span>}
           </button>
         </nav>
       )}
@@ -274,7 +273,7 @@ export function ArticleView({ data, issueId, mainRef, entries = [], onSelect }: 
       <footer className="mt-16 pt-6 border-t text-center text-xs" style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}>
         <p>
           内容来源：
-          <a href="https://github.com/jujuyaya/juya-ai-daily" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>橘鸦 AI 日报</a>
+          <a href="https://daily.juya.uk" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>橘鸦 AI 日报</a>
           {" · "}AI 辅助整理，内容仅供参考
         </p>
       </footer>

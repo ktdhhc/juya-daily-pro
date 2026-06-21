@@ -1,35 +1,36 @@
-const REPO_API = "https://api.github.com/repos/jujuyaya/juya-ai-daily";
-const RAW_BASE =
-  "https://raw.githubusercontent.com/jujuyaya/juya-ai-daily/master/BACKUP";
+// 数据源：橘鸦官方站 daily.juya.uk
+// （原 GitHub 源 jujuyaya/juya-ai-daily 因作者账号被封已失效）
+export const SITE = "https://daily.juya.uk";
+export const MD_BASE = `${SITE}/markdown`;
 
 export interface DailyEntry {
-  id: number;
+  id: number; // 由日期推导（YYYYMMDD），仅用于排序/定位，新源已无「期号」
   date: string;
   filename: string;
 }
 
 export async function fetchDailyList(): Promise<DailyEntry[]> {
-  const res = await fetch(`${REPO_API}/contents/BACKUP`);
+  // 归档页列出全部可读日期
+  const res = await fetch(`${SITE}/archive/`);
   if (!res.ok) throw new Error("Failed to fetch daily list");
-  const files: { name: string }[] = await res.json();
+  const html = await res.text();
+  const dates = [
+    ...new Set([...html.matchAll(/(\d{4}-\d{2}-\d{2})/g)].map((m) => m[1])),
+  ];
 
-  const entries: DailyEntry[] = files
-    .filter((f) => /^\d+_\d{4}-\d{2}-\d{2}\.md$/.test(f.name))
-    .map((f) => {
-      const match = f.name.match(/^(\d+)_(\d{4}-\d{2}-\d{2})\.md$/);
-      return {
-        id: parseInt(match![1], 10),
-        date: match![2],
-        filename: f.name,
-      };
-    })
+  const entries: DailyEntry[] = dates
+    .map((date) => ({
+      id: parseInt(date.replace(/-/g, ""), 10),
+      date,
+      filename: `${date}.md`,
+    }))
     .sort((a, b) => b.id - a.id);
 
   return entries;
 }
 
 export async function fetchDailyContent(filename: string): Promise<string> {
-  const res = await fetch(`${RAW_BASE}/${filename}`);
+  const res = await fetch(`${MD_BASE}/${filename}`);
   if (!res.ok) throw new Error("Failed to fetch content");
   return res.text();
 }
@@ -64,12 +65,8 @@ export function parseMarkdown(md: string): ParsedDaily {
   const overview: OverviewCategory[] = [];
   let contentStart = 0;
 
-  // Extract date from first line
-  const dateMatch = lines[0]?.match(/\[(\d{4}-\d{2}-\d{2})\]/);
-  if (dateMatch) date = dateMatch[1];
-
-  // Find cover image
-  for (let i = 1; i < Math.min(lines.length, 8); i++) {
+  // Find cover image（新格式首行即封面图）
+  for (let i = 0; i < Math.min(lines.length, 8); i++) {
     const imgMatch = lines[i].match(/^!\[\]\((.+)\)$/);
     if (imgMatch) {
       coverImage = imgMatch[1];
@@ -77,13 +74,14 @@ export function parseMarkdown(md: string): ParsedDaily {
     }
   }
 
-  // Find title
-  for (let i = 1; i < Math.min(lines.length, 10); i++) {
-    const titleMatch = lines[i].match(/^# (.+)/);
-    if (titleMatch && !titleMatch[1].startsWith("[")) {
-      title = titleMatch[1];
-      break;
-    }
+  // 标题行形如「# AI 早报 2026-06-21」：日期在标题里；泛标题不另外展示
+  for (let i = 0; i < Math.min(lines.length, 10); i++) {
+    const titleMatch = lines[i].match(/^#\s+(.+)/);
+    if (!titleMatch) continue;
+    const dm = titleMatch[1].match(/(\d{4}-\d{2}-\d{2})/);
+    if (dm) date = dm[1];
+    if (!/AI\s*早报/.test(titleMatch[1])) title = titleMatch[1];
+    break;
   }
 
   // Find video links

@@ -1,13 +1,10 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { DailyEntry, ParsedDaily, parseMarkdown } from "@/lib/github";
+import { DailyEntry, ParsedDaily, parseMarkdown, MD_BASE } from "@/lib/github";
 import { Header } from "./Header";
 import { DatePicker } from "./DatePicker";
 import { ArticleView } from "./ArticleView";
-
-const RAW_BASE =
-  "https://raw.githubusercontent.com/jujuyaya/juya-ai-daily/master/BACKUP";
 
 interface Props {
   entries: DailyEntry[];
@@ -92,7 +89,7 @@ export function DailyPage({
     setLoading(true);
     setCalendarOpen(false);
     try {
-      const res = await fetch(`${RAW_BASE}/${entry.filename}`);
+      const res = await fetch(`${MD_BASE}/${entry.filename}`);
       const md = await res.text();
       const parsed = parseMarkdown(md);
       setData(parsed);
