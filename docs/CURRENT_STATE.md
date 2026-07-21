@@ -18,7 +18,7 @@
 
 ## 项目一句话说明
 
-把 daily.juya.uk 每日发布的 AI 资讯合集按"时间线 + 公司"两个维度重新整理，部署在 Cloudflare 上供多用户查阅，并为未来 RAG 预留语义索引入口。
+把 daily.juya.uk 每日发布的 AI 资讯合集按"事件流 + 公司"两个维度重新整理，部署在 Cloudflare 上供多用户查阅，并为未来 RAG 预留语义索引入口。
 
 ## 当前阶段
 
@@ -26,7 +26,7 @@ A 类（方案定、代码未大规模落地）：11 枚 ADR 与 1 份 PRD 已�
 
 ## 范围边界
 
-- 做：MVP 内的日期阅读页 + 时间线 + 公司页 + cron 自动同步 + D1 + R2 + 纯函数 Vitest 覆盖。
+- 做：MVP 内的日期阅读页 + 事件流视图 + 公司页 + cron 自动同步 + D1 + R2 + 纯函数 Vitest 覆盖。
 - 暂不做：RAG / Vectorize / 话题聚类 / 告警 / 用户账号 / 多语言 / 公司行业子分类 / 自动迁移机制。
 
 ## 当前架构
@@ -42,7 +42,7 @@ A 类（方案定、代码未大规模落地）：11 枚 ADR 与 1 份 PRD 已�
 ## 主流程关键事实
 
 1. **生产数据流**：daily.juya.uk `/archive/` → cron Worker 检测新期 → fetch `/markdown/<date>.md` → 写 R2 → `parseMarkdown` → `matchCompanies`（段一）→ 多家时 `enrichLLM`（段二，单分类挑 primary）→ upsert D1。
-2. **前端取数**：四个路由 `/` `/timeline` `/company` `/company/[id]` 全部走相对路径 `/api/*`（dev 由 next.config rewrites 代理到本地 `wrangler dev :8787`，生产由 Pages Functions 同域代理）。
+2. **前端取数**：四个路由 `/` `/stream` `/company` `/company/[id]` 全部走相对路径 `/api/*`（dev 由 next.config rewrites 代理到本地 `wrangler dev :8787`，生产由 Pages Functions 同域代理）。
 3. **白名单闸门**：只有 `data/companies.yaml` 中登记的 Company 才会被标到 Item 上，retired 公司不参与匹配。yaml 是唯一真相源，Worker redeploy 后首次调用幂等 upsert D1 `companies` 表。
 4. **幂等性**：cron 每次执行查 `max(items.date) + SYNC_LOOKBACK_DAYS`，仅拉新期；所有 upsert 走 `ON CONFLICT DO UPDATE`，可随时手动重跑。
 
@@ -65,7 +65,7 @@ A 类（方案定、代码未大规模落地）：11 枚 ADR 与 1 份 PRD 已�
 - 顶部 Header（sticky）：品牌名、日历按钮、复制链接、外部链接、ThemeToggle、Reading Progress。
 - 当前唯一路由 `/`：当前期阅读页（cover + videoLinks + 概览分类 + react-markdown 正文 + TOC + 前后期导航 + Back-toTop）。
 - 6 套主题（data-theme 属性 + CSS 变量，详见 `src/app/globals.css`）。
-- 待 RF 拆掉：未完成的 `/timeline`、`/company`、`/company/[id]` 路由与对应组件。
+- 待 RF 拆掉：未完成的 `/stream`、`/company`、`/company/[id]` 路由与对应组件。
 
 ## 当前前端整体现状
 

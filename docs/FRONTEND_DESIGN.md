@@ -6,7 +6,7 @@
 >
 > - 6 套主题 CSS 变量：`src/app/globals.css` 中 `[data-theme="..."]` 块
 > - 6 个已有组件：`src/components/` 下的 ArticleView / DailyPage / Header / DatePicker / ThemeProvider / ThemeToggle
-> - 时间线 / 公司页卡片与档案头字段：见 `docs/prd/PRD.md` Implementation Decisions 段
+> - 事件流 / 公司页卡片与档案头字段：见 `docs/prd/PRD.md` Implementation Decisions 段
 > - 空态与加载态：见 `docs/prd/PRD.md` Out of Scope 与 ADR-0011
 >
 > 当 MVP 阶段 4（read API + 三视图）落地完成、视觉与交互边界稳定后，再由 prebuild-docs skill 二次生成此文件。届时把上述临时代用项整理进本文件，并删除本提示。

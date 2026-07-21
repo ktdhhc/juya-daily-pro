@@ -81,10 +81,10 @@
   - `GET /api/companies` `GET /api/companies/:id`：含档案头五块（ADR-0007）。
   - 60s `caches.default` 缓存；统一 `{error:{code,message}}`。
 - 前端：
-  - 新增 `src/app/timeline/page.tsx` + `TimelineView` 组件（按天分组 + facet 筛选 + 1-11 字段全卡片）。
+  - 新增 `src/app/stream/page.tsx` + `StreamView` 组件（按天分组 + facet 筛选 + 1-11 字段全卡片）。
   - 新增 `src/app/company/page.tsx` + `CompanyIndex` 组件。
   - 新增 `src/app/company/[id]/page.tsx` + `CompanyProfile` 组件（档案头五块 + Item 倒序列表）。
-  - 新增全局 Header Nav 三联（"日期 | 时间线 | 公司"），三视图共用。
+  - 新增全局 Header Nav 三联（"日期 | 事件流 | 公司"），三视图共用。
   - 首页 `/` 改 fetch `/api/daily/:date`（最坏滞后 30 分钟，无 client fallback）。
   - 4 个空态组件（骨架 + 空筛选提示 + 404 + fetch 失败重试）。
 - Vitest：对 read API 的 SQL 构造逻辑做单测（不需要真 D1，测 helper 函数）。
@@ -122,7 +122,7 @@
 - **阶段 3 LLM 调用成本**：全量历史 enrich 一次需调多次 LLM（按多家归属 item 数估）。受 `MAX_LLM_PER_RUN=20` 限流后须多次跑或循环跑。ACCEPT：阶段 3 一次性补完，长期成本可控。
 - **阶段 4 前端无 read API 时的 mock 体验**：阶段 4 实际是 read API + 前端同阶段落地，不存在读不到 API 的中间态。但若 read API 实现延期，前端进度也卡住——同阶段绑死是必要的取舍。
 - **阶段 5 cron 失败重试**：单次 cron 失败依赖下次 cron 自然重试，MVP 不做 retry queue 与告警。若 daily.juya.uk 长时间不可达，sync_log 会堆积 fetch_failed 行，需人工周知。
-- **首页 `/` 与时间线/公司页数据口径**：MVP 三视图全部走 Worker read API，口径一致；无 cron 时首页最坏滞后 30 分钟（cron 周期内）或更长（cron 故障），均统一从 D1 读，不会出现首页是新期且公司页缺该期的分裂状态。
+- **首页 `/` 与事件流/公司页数据口径**：MVP 三视图全部走 Worker read API，口径一致；无 cron 时首页最坏滞后 30 分钟（cron 周期内）或更长（cron 故障），均统一从 D1 读，不会出现首页是新期且公司页缺该期的分裂状态。
 
 ## 10. 何时更新 CURRENT_STATE
 

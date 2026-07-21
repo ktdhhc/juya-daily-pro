@@ -2,7 +2,7 @@
 
 ## Context
 
-Item 是本项目数据原子单位，schema 一旦定型会被下游 enrich、时间线渲染、公司页详情、未来 LLM 二次加工同时依赖。两处关键取舍：
+Item 是本项目数据原子单位，schema 一旦定型会被下游 enrich、事件流渲染、公司页详情、未来 LLM 二次加工同时依赖。两处关键取舍：
 
 - 主键形式：UUID / 自增整数 / `YYYYMMDD-N` 三选一。
 - bodyMd 是否保留正文原文，还是只存 summary。

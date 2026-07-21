@@ -34,10 +34,10 @@ Phase 4  产品化        [未启动]      多用户、监控、备份与运维�
 ## 4. Phase 1 · MVP（进行中）
 
 ### 目标
-让"按时间线 + 公司"重新整理的查阅站点上线可访问，自动同步 daily.juya.uk 每日新期。
+让"按事件流 + 公司"重新整理的查阅站点上线可访问，自动同步 daily.juya.uk 每日新期。
 
 ### 包含
-- 4 路由（`/`、`/timeline`、`/company`、`/company/[id]`）+ 顶部 Nav 三联 + 共用 Header
+- 4 路由（`/`、`/stream`、`/company`、`/company/[id]`）+ 顶部 Nav 三联 + 共用 Header
 - Cloudflare Worker cron trigger（北京 08-11 半点，6 次/天）
 - D1 五表 + R2 原文归档 + read API 5 端点
 - Company Registry 30 家种子 + LLM 限多家归属单分类
@@ -101,7 +101,7 @@ ADR-0001 至 ADR-0011 全部。
 - **RAG 答时同前 join**：检索后按 item_id 回 D1 取展示字段，复用 read API。
 - **流式响应**：用 Workers AI streaming（ReadableStream）逐步输出回答。
 - **配额控制**：单 IP 每天最多 N 次问答，超过提示；个人用户场景而非企业级 SLA。
-- **citation 链接回原 Item**：回答里每个引用块点击跳到 `/timeline?<filter to that item>` 或直接弹卡片。
+- **citation 链接回原 Item**：回答里每个引用块点击跳到 `/stream?<filter to that item>` 或直接弹卡片。
 
 ### 出口标准
 - "Kimi 最近发生了什么"的回答 cite 至少 3 条真实 Item，无 hallucination 编造。
@@ -167,7 +167,7 @@ Phase 4  产品化          估 5 个 work session
 
 - **Phase 2 话题聚类的 LLM 介入面扩张**：LLM 介入加深、token 成本上升、引入幻觉风险。取舍：拉开 LLM_ENABLED 开关 → Phase 2 要新增 ADR 把"聚合缓存"路径设计清楚，避免回流污染 D1。
 - **Phase 3 Vectorize 数据时效**：新 Item 入 D1 后需异步进 Vectorize，存在时间窗口用户问题答不到。取舍：cron Worker 末尾加 "embed 增量"任务，复用 enrich_cache 同模式。
-- **Phase 4 静态导出 vs ISR**：`output: export` 与 Cloudflare Pages 静态资产绑定，引入 ISR 需迁到 Pages Functions。取舍：先把首页 + 时间线改为 ISR，公司页继续静态。
+- **Phase 4 静态导出 vs ISR**：`output: export` 与 Cloudflare Pages 静态资产绑定，引入 ISR 需迁到 Pages Functions。取舍：先把首页 + 事件流改为 ISR，公司页继续静态。
 - **跨 phase 节奏不强制连续**：每个 phase 独立可交付，之间可有任意长间隔、不动现网。
 
 ## 10. Phase 间接口稳定性

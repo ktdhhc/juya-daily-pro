@@ -1,6 +1,6 @@
 # Juya AI Daily Plus
 
-把 [daily.juya.uk](https://daily.juya.uk) 每日发布的 AI 资讯合集，按"时间线"与"公司"两个维度重新整理，便于个人快速查找与捋清信息。
+把 [daily.juya.uk](https://daily.juya.uk) 每日发布的 AI 资讯合集，按"事件流"与"公司"两个维度重新整理，便于个人快速查找与捋清信息。
 
 ## Language
 

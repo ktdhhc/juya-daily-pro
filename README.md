@@ -1,13 +1,13 @@
 # Juya AI Daily Plus
 
-把 [daily.juya.uk](https://daily.juya.uk) 每日发布的 AI 资讯合集按"时间线 + 公司"两个维度重新整理，部署在 Cloudflare 上供多用户查阅。
+把 [daily.juya.uk](https://daily.juya.uk) 每日发布的 AI 资讯合集按"事件流 + 公司"两个维度重新整理，部署在 Cloudflare 上供多用户查阅。
 
 > MVP 范围、30 条 user stories、11 枚架构决策记录见 `docs/prd/PRD.md` 与 `docs/adr/`。术语表见 `CONTEXT.md`。当前真相快照见 `docs/CURRENT_STATE.md`。
 
 ## 功能
 
-- **日期阅读页** `/` — 当前期完整阅读页，日历切换往期，前后期导航
-- **时间线** `/timeline` — 按天分组的 Item 卡片流、左侧 facet 筛选（公司 / 分类 / 日期范围）
+- **日期阅读页** `/` — 当前期完整阅读页，日历切换往期，前后期导航，保留报纸式单期阅读体感
+- **事件流** `/stream` — 跨期 Item 卡片流，按天分组、左侧 facet 筛选（公司 / 分类 / 日期范围）
 - **公司索引** `/company` — 全部登记公司卡片墙
 - **公司档案** `/company/[id]` — 档案头五块（身份 / 活跃度 / 性质画像 / 行业关系 / 时间跨度）+ 该公司事件按时间倒序
 - **6 套主题** — 经典 / 极简 / 沙丘 / 蓝图 / 墨夜 / 霓虹，data-theme 属性 + CSS 变量切换
