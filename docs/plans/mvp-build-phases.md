@@ -107,7 +107,7 @@
 
 - D1 schema 变化：阶段 2 整体建表一次，后续阶段不增表（除非 RAG 二期加 Vectorize 绑定）。
 - 前端路由变化：阶段 4 新增三视图、首页 fetch 路径切换。
-- API 契约：阶段 4 钉死 5 条 read API 的 query / response 形状，详见 `docs/PRD.md` Implementation Decisions。
+- API 契约：阶段 4 钉死 5 条 read API 的 query / response 形状，详见 `docs/prd/PRD.md` Implementation Decisions。
 - Item `enrich_state`：阶段 2 入库时为 `pending`；阶段 3 / 阶段 5 完成匹配后变 `ok` 或 `missing_owner`。
 
 ## 8. 验证方式

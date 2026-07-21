@@ -2,7 +2,7 @@
 
 把 [daily.juya.uk](https://daily.juya.uk) 每日发布的 AI 资讯合集按"时间线 + 公司"两个维度重新整理，部署在 Cloudflare 上供多用户查阅。
 
-> MVP 范围、30 条 user stories、11 枚架构决策记录见 `docs/PRD.md` 与 `docs/adr/`。术语表见 `CONTEXT.md`。当前真相快照见 `docs/CURRENT_STATE.md`。
+> MVP 范围、30 条 user stories、11 枚架构决策记录见 `docs/prd/PRD.md` 与 `docs/adr/`。术语表见 `CONTEXT.md`。当前真相快照见 `docs/CURRENT_STATE.md`。
 
 ## 功能
 
@@ -80,10 +80,12 @@ juya-daily-plus/
 ├── CONTEXT.md                    # 术语表（Daily Issue / Item / Company / Role 等）
 ├── AGENTS.md                     # coding agent 操作指南
 ├── docs/
-│   ├── PRD.md                    # MVP 范围与 user stories
+│   ├── prd/PRD.md                # MVP 范围与 user stories
 │   ├── CURRENT_STATE.md          # 当前真相快照
 │   ├── adr/0001-0011.md          # 11 枚架构决策记录
-│   └── plans/mvp-build-phases.md # 分阶段执行计划
+│   └── plans/
+│       ├── product-engineering-roadmap.md  # 产品工程落地大纲（Phase 0-4）
+│       └── mvp-build-phases.md             # MVP 内部 6 子阶段执行计划
 ├── data/companies.yaml           # Company Registry 真相源（30 家种子）
 ├── src/                          # Next.js 前端
 ├── worker/sync/schema.sql        # D1 五张表

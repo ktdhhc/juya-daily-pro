@@ -3,7 +3,7 @@
 本文件适用于位于 `D:\1project\juya-daily-plus` 仓库的整体。
 将其作为在本仓库中工作的 coding agent 的默认操作指南。
 
-> 本文件只写"应该如何工作"。当前是什么（架构、主流程、文件地图、运行事实）见 `docs/CURRENT_STATE.md`；术语见 `CONTEXT.md`；方案与决策见 `docs/adr/`、`docs/PRD.md`、`docs/plans/`。
+> 本文件只写"应该如何工作"。当前是什么（架构、主流程、文件地图、运行事实）见 `docs/CURRENT_STATE.md`；术语见 `CONTEXT.md`；方案与决策见 `docs/adr/`、`docs/prd/PRD.md`、`docs/plans/`。
 
 ## 一、全局 Agent 原则
 
@@ -86,7 +86,7 @@
 - 读取时机：后续 agent 会话默认优先阅读。
 - 注意：保持短、小、稳，只记录当前仍然有效的事实。
 
-#### `docs/PRD.md`
+#### `docs/prd/PRD.md`
 
 - 用途：MVP 范围、30 条 user stories、实现决策与 ADR 索引。
 - 读取时机：进入新功能开发、确认用户价值边界、查阅 API 形状时。

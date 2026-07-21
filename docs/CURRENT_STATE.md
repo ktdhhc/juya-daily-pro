@@ -83,7 +83,7 @@ worker/sync/schema.sql        # D1 五张表完整定义
 wrangler.jsonc                # cron `0,30 0,1,2 * * *`、vars、D1/R2 绑定、secret 引用
 next.config.ts                # output export + dev rewrites /api/* → :8787
 .dev.vars                     # 本地 env 模板（已 .gitignore）
-docs/PRD.md                   # 30 条 user stories + 实现决策汇总
+docs/prd/PRD.md               # 30 条 user stories + 实现决策汇总
 docs/adr/0001-0011.md         # 11 枚 ADR（按需查，独立文件而非合订本）
 ```
 

@@ -35,10 +35,12 @@
 ## 当前推荐文件
 
 ```text
-mvp-build-phases.md     MVP 分阶段执行计划（0-5 共 6 个阶段，按 ADR 推进）
-rag-phase-plan.md       二期 RAG 落地方案（待 RAG 视图启动时再写）
+product-engineering-roadmap.md   产品工程侧落地大纲（Phase 0-4 宏观路线）
+mvp-build-phases.md              MVP 内部 0-5 子阶段执行计划
+rag-phase-plan.md                二期 RAG 落地方案（待 Phase 3 启动时再写）
 ```
 
 ## 当前已有文件
 
-- `mvp-build-phases.md` — 阶段 0-5 的执行顺序与每段验证方式。
+- `product-engineering-roadmap.md` — 产品宏观 phase 划分（0 立基 / 1 MVP / 2 检索+智能化 / 3 RAG 问答 / 4 产品化）。
+- `mvp-build-phases.md` — Phase 1 内部 6 个子阶段的执行顺序与每段验证方式。
