@@ -1,0 +1,34 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "juya-daily-sync",
+  "main": "worker/sync/index.ts",
+  "compatibility_date": "2026-07-01",
+  "triggers": {
+    "crons": ["0,30 0,1,2 * * *"]
+  },
+  "vars": {
+    "ARCHIVE_URL": "https://daily.juya.uk/archive/",
+    "MD_BASE": "https://daily.juya.uk/markdown",
+    "SYNC_LOOKBACK_DAYS": "3",
+    "LLM_ENABLED": "true",
+    "LLM_API_BASE": "https://api.openai.com/v1",
+    "LLM_MODEL": "gpt-4o-mini",
+    "ENRICH_CACHE_ENABLED": "true",
+    "MAX_LLM_PER_RUN": "20",
+    "R2_BUCKET": "juya-daily-archive"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "juya-daily",
+      "database_id": "REPLACE_WITH_REAL_D1_ID"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ARCHIVE",
+      "bucket_name": "juya-daily-archive"
+    }
+  ],
+  "secrets": ["LLM_API_KEY"]
+}

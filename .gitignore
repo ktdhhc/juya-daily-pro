@@ -1,7 +1,7 @@
-node_modules
-.next
-out
-*.tsbuildinfo
-next-env.d.ts
-.DS_Store
-.claude
+.dev.vars
+.dev.vars.*
+.wrangler/
+node_modules/
+.next/
+out/
+.opencode/
