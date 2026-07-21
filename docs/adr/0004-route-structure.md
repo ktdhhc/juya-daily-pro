@@ -15,7 +15,7 @@
 - `/company`          公司索引页（按字母或事件数排序的卡片墙）
 - `/company/[id]`     单公司页（该公司所有事件按时间倒序）
 
-顶部 Header 在四页共用，新增 Nav 三联：`日期 | 事件流 | 公司`，右边保留 ThemeToggle。
+顶部 Header 在四页共用，新增 Nav 三联：`日报 | 事件流 | 公司`，右边保留 ThemeToggle。
 首页默认仍是当前期阅读，不打破已有的 `?date=` 分享习惯。
 
 ## Why not the alternatives

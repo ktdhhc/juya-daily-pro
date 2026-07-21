@@ -84,7 +84,7 @@
   - 新增 `src/app/stream/page.tsx` + `StreamView` 组件（按天分组 + facet 筛选 + 1-11 字段全卡片）。
   - 新增 `src/app/company/page.tsx` + `CompanyIndex` 组件。
   - 新增 `src/app/company/[id]/page.tsx` + `CompanyProfile` 组件（档案头五块 + Item 倒序列表）。
-  - 新增全局 Header Nav 三联（"日期 | 事件流 | 公司"），三视图共用。
+  - 新增全局 Header Nav 三联（"日报 | 事件流 | 公司"），三视图共用。
   - 首页 `/` 改 fetch `/api/daily/:date`（最坏滞后 30 分钟，无 client fallback）。
   - 4 个空态组件（骨架 + 空筛选提示 + 404 + fetch 失败重试）。
 - Vitest：对 read API 的 SQL 构造逻辑做单测（不需要真 D1，测 helper 函数）。

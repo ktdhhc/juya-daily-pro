@@ -147,7 +147,7 @@ cron 表达式本身在 `wrangler.jsonc.triggers.crons`，改频率需 redeploy�
 - `/stream` 事件流视图 + facet 筛选
 - `/company` 公司索引页
 - `/company/[id]` 单公司页
-- Header 在四页共用、新增 Nav 三联（`日期 | 事件流 | 公司`）+ 右侧 ThemeToggle
+- Header 在四页共用、新增 Nav 三联（`日报 | 事件流 | 公司`）+ 右侧 ThemeToggle
 
 ### 视图渲染细节
 
