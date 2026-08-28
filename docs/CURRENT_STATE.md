@@ -22,7 +22,7 @@
 
 ## 当前阶段
 
-阶段 0（清债）、1（解析器）、2（D1 建表 + 回填）已完成（2026-08-29）：test/typecheck/lint/build 四门禁 + CI 就位（vitest 52 测试）；`worker/sync/parse.ts` parseIssue 与 sqlgen/archive 纯函数齐备；本地模拟 D1 六表已建并完成全量回填（sources 72 / items 1105 / companies 30，幂等验证通过）。下一步为阶段 3（确定性白名单匹配）。首页仍是单页静态导出直连 daily.juya.uk；read API / 新视图尚未实现。
+阶段 0（清债）、1（解析器）、2（D1 建表 + 回填）、3（确定性匹配）已完成（2026-08-29）：vitest 78 测试；本地 D1 数据：items 1105（ok 863 / missing_owner 242）、item_companies 1222（role 全 NULL）、companies 30。下一步为阶段 4（read API + 三视图 + FRONTEND_DESIGN 界面落地）。首页仍是单页静态导出直连 daily.juya.uk；read API / 新视图尚未实现。
 
 ## 范围边界
 
@@ -88,6 +88,8 @@ worker/sync/archive.ts        # parseArchiveDates：archive HTML → 期日期�
 worker/sync/sqlgen.ts         # D1 upsert SQL 生成纯函数（escape / sources / items / companies）
 scripts/gen-registry.ts       # data/companies.yaml → worker/registry.generated.ts（含校验；npm run gen:registry）
 worker/registry.generated.ts  # 生成物：REGISTRY: Company[]（30 家）——勿手改，改 yaml 后重跑 gen:registry
+worker/sync/match.ts          # matchAll 纯编排：items × registry → ownerRows / okIds / missingIds
+scripts/match-all.ts          # 全量匹配回写（npm run match:all，幂等）；scripts/lib/wrangler-cli.ts 为共享 wrangler 执行器
 scripts/backfill.ts           # 全量回填胶水：archive → parse → sqlgen → wrangler d1 execute --local（npm run backfill，幂等）
 eslint.config.mjs             # lint 门禁（next 预设；set-state-in-effect 降级 warn 的理由见文件内注释）
 .github/workflows/ci.yml      # CI：npm ci + typecheck + lint + build（无部署 step）
