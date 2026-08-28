@@ -22,7 +22,7 @@
 
 ## 当前阶段
 
-阶段 0（清债）、1（解析器）、2（D1 建表 + 回填）、3（确定性匹配）已完成（2026-08-29）：vitest 78 测试；本地 D1 数据：items 1105（ok 863 / missing_owner 242）、item_companies 1222（role 全 NULL）、companies 30。下一步为阶段 4（read API + 三视图 + FRONTEND_DESIGN 界面落地）。首页仍是单页静态导出直连 daily.juya.uk；read API / 新视图尚未实现。
+阶段 0-4 已完成（2026-08-29）：read API 5 端点（`worker/api/`，wrangler dev :8787）+ 三视图（`/stream`、`/company`、`/company/[id]`，FRONTEND_DESIGN「合订本×轻科技」落地）+ 报头/合订本/骨架改造；vitest 104 测试；本地 D1：items 1105（ok 863 / missing_owner 242）、item_companies 1222、companies 30。本地双进程（`npm run dev` :3000 + `wrangler dev` :8787）全链路可用，浏览器截图验证通过。下一步为阶段 5（`npm run sync` 手动增量同步），之后即部署日门槛。
 
 ## 范围边界
 
@@ -42,7 +42,7 @@
 ## 主流程关键事实
 
 1. **数据流（v1）**：`npm run sync` 查 `max(items.date)` + `SYNC_LOOKBACK_DAYS` → 抓 daily.juya.uk archive → 拉新期 markdown → 写 D1 `sources` → `parseIssue` → `matchCompanies`（确定性单段，ADR-0014）→ upsert D1。`npm run backfill` 为全量历史回填。均幂等（`ON CONFLICT DO UPDATE`）。**当前状态：backfill 已跑通（sources 72 / items 1105 / companies 30），sync 待阶段 5。**
-2. **前端取数**：三新视图 `/stream` `/company` `/company/[id]` 走相对路径 `/api/*`（dev 由 next.config rewrites 代理到本地 `wrangler dev :8787`）；**首页 `/` 维持直连 daily.juya.uk 不变**（部署日才迁移统一口径，ADR-0013）。
+2. **前端取数**：三新视图 `/stream` `/company` `/company/[id]` 走相对路径 `/api/*`（dev 由 next.config rewrites 代理到本地 `wrangler dev :8787`）；**首页 `/` 维持直连 daily.juya.uk 不变**（部署日才迁移统一口径，ADR-0013）。fetch 统一走 `src/lib/api.ts` 的 apiFetch（错误集中处理为 ApiError）。
 3. **白名单闸门**：只有 `data/companies.yaml` 中登记的 Company 才会被标到 Item 上，retired 公司不参与匹配。yaml 是唯一真相源，sync 时幂等 upsert D1 `companies` 表。
 4. **归属规则（v1）**：单段确定性匹配——0 命中 `missing_owner`（仍入库）、1 家单归属、≥2 家并列归属且 **role 全部 NULL**（徽章并列不分主次）；LLM enrich（role 回填）为部署日后离线任务，`enrich_cache` 表保留但 v1 不写入。
 
@@ -64,11 +64,13 @@
 
 ## 当前 UI 结构
 
-- 顶部 Header（sticky）：品牌名、日历按钮、复制链接、外部链接、ThemeToggle、Reading Progress。
-- 当前唯一路由 `/`：当前期阅读页（cover + videoLinks + 概览分类 + react-markdown 正文 + TOC + 前后期导航 + BackToTop），直连 daily.juya.uk 取数。
-- 6 套主题（data-theme 属性 + CSS 变量，详见 `src/app/globals.css`）。
-- 设计原型：`demo/index.html`（纯静态单文件，双击即看；三视图 mock + 6 主题，命名已对齐"日报 | 事件流 | 公司"）。
-- 待实现：`/stream`、`/company`、`/company/[id]` 路由与对应组件。
+- 报头（全站共用）：品牌方印「橘」+ Nav 三联（日报/事件流/公司，激活 3px 墨线）+ 刊号/主题切换；阅读页专属控件（日历/复制/外链/进度条）仅 `/` 显示。
+- `/` 阅读页：直连 daily.juya.uk（部署日迁移），galley 骨架 + 合订本日历（竖排月份+裸数字网格+当前压印）。
+- `/stream`：facet 栏（公司/分类/时间，竖排标签+墨点）+ 按天分组条目流（页边 #N 编号列+钤印脚注行），facet↔URL 双向同步，before_date 滚动翻页。
+- `/company`：印章卡片墙（total 倒序）+ 客户端搜索。
+- `/company/[id]`：档案头五块（大方印/统计/分类墨条分布/关联钤印/时间跨度）+ 差异渲染条目列表；generateStaticParams 由 REGISTRY 枚举 30 家。
+- 6 主题不变（cyber 已去辉光）；设计契约见 `docs/FRONTEND_DESIGN.md`。
+- 设计原型：`demo/index.html`（纯静态单文件）。
 
 ## 当前前端整体现状
 
