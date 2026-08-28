@@ -22,7 +22,7 @@
 
 ## 当前阶段
 
-阶段 0 清债已完成（2026-08-29）：typecheck / lint / CI（npm ci + typecheck + lint + build，无部署）三道门禁就位，globals.css 死代码已清，`src/lib/github.ts` 已更名 `juya.ts`（零行为变更，首页仍直连 daily.juya.uk）。14 枚 ADR 与 1 份 PRD 固化（2026-08-28 经 ADR-0013/0014 本地优先裁剪）。下一步为阶段 1（解析器重构 + fixtures）。Worker/后端/新视图尚未实现。
+阶段 0（清债）与阶段 1（解析器）已完成（2026-08-29）：typecheck / lint / test / CI 四道门禁就位；`worker/sync/parse.ts` 的 `parseIssue` 已把一期 Daily Issue 拆成结构化 Item[]（16 个 Vitest 测试，含两份真实 fixture 快照与 12 个边界 case）。14 枚 ADR 与 1 份 PRD 固化（2026-08-28 经 ADR-0013/0014 本地优先裁剪）。下一步为阶段 2（本地 D1 建表 + 回填）。首页仍是单页 Next.js 静态导出直连 daily.juya.uk；read API / D1 / 新视图尚未实现。
 
 ## 范围边界
 
@@ -81,6 +81,9 @@
 src/lib/schema.ts             # Item / Owner / Company / CompanyCandidate 类型契约（ADR-0002 落地，含 sequenceInt）
 src/lib/matchCompanies.ts     # 段一确定性匹配器（ADR-0003 段一落地，正则+字面量 alias）
 src/lib/juya.ts               # 日报数据源 fetch + parseMarkdown 概览解析（原 github.ts；部署日 fetch 下沉 Worker）
+worker/sync/parse.ts          # parseIssue：一期 md → {date, Item[]} 纯函数（规则真相源 docs/spec/spec01 2.2）
+worker/sync/parse.test.ts     # 16 测试：fixture 快照 ×4 + 边界 case ×12；快照 diff 即日报结构漂移报警
+worker/sync/fixtures/         # 真实日报语料（2026-08-27 / 2026-08-25）
 eslint.config.mjs             # lint 门禁（next 预设；set-state-in-effect 降级 warn 的理由见文件内注释）
 .github/workflows/ci.yml      # CI：npm ci + typecheck + lint + build（无部署 step）
 data/companies.yaml           # Company Registry 真相源（31 家种子）
@@ -124,7 +127,7 @@ backfill / sync：`npm run backfill` / `npm run sync` 在根目录执行（本�
 
 ## 当前可维护性热点
 
-- 升级版 Item 解析器将落 `worker/sync/parse.ts`（阶段 1）；`src/lib/juya.ts` 的 parseMarkdown 保持概览解析旧形态供首页使用，勿在其上扩 Item 解析。
+- 升级版 Item 解析器已落 `worker/sync/parse.ts`（`parseIssue`）；`src/lib/juya.ts` 的 parseMarkdown 保持概览解析旧形态供首页使用，两者勿混用。
 - lint 存量 5 处 warn（`react-hooks/set-state-in-effect`，DailyPage/ThemeToggle 挂载期同步模式）——spec 04 重写状态流时收敛，勿提前重构。
 - 类型契约与 schema 已建（`src/lib/schema.ts`），但 Worker 与前端尚未消费——落地时务必匹配这套形状。
 - `wrangler.jsonc` 里 `database_id` 当前是占位符 `REPLACE_WITH_REAL_D1_ID`，部署日（阶段 6）才需替换。
