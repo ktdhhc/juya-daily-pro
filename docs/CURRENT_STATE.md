@@ -22,7 +22,7 @@
 
 ## 当前阶段
 
-A 类（方案定、代码未大规模落地）：14 枚 ADR 与 1 份 PRD 已固化（2026-08-28 经 ADR-0013/0014 本地优先裁剪），基础设施代码（schema.ts、matchCompanies.ts、companies.yaml、schema.sql、wrangler.jsonc、next.config rewrites）已落地，主要工作量待阶段 0 后开工。当前前端仍是单页 Next.js 静态导出，Worker/后端/新视图尚未实现。
+阶段 0 清债已完成（2026-08-29）：typecheck / lint / CI（npm ci + typecheck + lint + build，无部署）三道门禁就位，globals.css 死代码已清，`src/lib/github.ts` 已更名 `juya.ts`（零行为变更，首页仍直连 daily.juya.uk）。14 枚 ADR 与 1 份 PRD 固化（2026-08-28 经 ADR-0013/0014 本地优先裁剪）。下一步为阶段 1（解析器重构 + fixtures）。Worker/后端/新视图尚未实现。
 
 ## 范围边界
 
@@ -80,6 +80,9 @@ A 类（方案定、代码未大规模落地）：14 枚 ADR 与 1 份 PRD 已�
 ```text
 src/lib/schema.ts             # Item / Owner / Company / CompanyCandidate 类型契约（ADR-0002 落地，含 sequenceInt）
 src/lib/matchCompanies.ts     # 段一确定性匹配器（ADR-0003 段一落地，正则+字面量 alias）
+src/lib/juya.ts               # 日报数据源 fetch + parseMarkdown 概览解析（原 github.ts；部署日 fetch 下沉 Worker）
+eslint.config.mjs             # lint 门禁（next 预设；set-state-in-effect 降级 warn 的理由见文件内注释）
+.github/workflows/ci.yml      # CI：npm ci + typecheck + lint + build（无部署 step）
 data/companies.yaml           # Company Registry 真相源（31 家种子）
 worker/sync/schema.sql        # D1 表定义；sources 表待阶段 2 增补成六表（ADR-0013）
 wrangler.jsonc                # D1 绑定；triggers.crons v1 留空（部署日启用）；database_id 仍是占位符
@@ -116,13 +119,13 @@ backfill / sync：`npm run backfill` / `npm run sync` 在根目录执行（本�
 - Worker 行为：本地 `wrangler dev`（本地模拟 D1）手动验证 /api/* 响应。
   真实 LLM 调用、远程 D1 roundtrip 属部署日行为，不作默认验证。
 - 前端：`npm run dev` 看视觉；`npm run build` 必须产出 out/ 静态产物验证导出无误。
-- 类型与 lint：阶段 0 加 typecheck script 与最简 eslint 配置（详见 docs/plans/mvp-build-phases.md 阶段 0）。
+- 类型与 lint：`npm run typecheck`、`npm run lint` 为 0-error 门禁（现存 5 处 warn 允许）；push/PR 由 CI（.github/workflows/ci.yml）跑 npm ci + typecheck + lint + build。
 ```
 
 ## 当前可维护性热点
 
-- `src/lib/github.ts` 命名与实现都需要重命名为 `juya.ts`（阶段 0）；升级版解析器落 `worker/sync/parse.ts`（阶段 1）。
-- `globals.css:129` botanical 主题死变量、`globals.css:118` `.site-badge` 全无组件使用——阶段 0 清债。
+- 升级版 Item 解析器将落 `worker/sync/parse.ts`（阶段 1）；`src/lib/juya.ts` 的 parseMarkdown 保持概览解析旧形态供首页使用，勿在其上扩 Item 解析。
+- lint 存量 5 处 warn（`react-hooks/set-state-in-effect`，DailyPage/ThemeToggle 挂载期同步模式）——spec 04 重写状态流时收敛，勿提前重构。
 - 类型契约与 schema 已建（`src/lib/schema.ts`），但 Worker 与前端尚未消费——落地时务必匹配这套形状。
 - `wrangler.jsonc` 里 `database_id` 当前是占位符 `REPLACE_WITH_REAL_D1_ID`，部署日（阶段 6）才需替换。
 - `worker/sync/schema.sql` 当前是五表，缺 `sources` 表——阶段 2 增补（勿在阶段 2 之前手动加，保持阶段边界）。
