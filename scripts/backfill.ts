@@ -2,14 +2,14 @@
 // 纯逻辑（archive 解析 / issue 解析 / SQL 生成）已在 worker/sync/* 测过（ADR-0011）；
 // 本脚本只做：fetch → parse → SQL 累积 → 临时 SQL 文件 → `wrangler d1 execute juya-daily --local --file`
 // → 失败降级逐期分块 → counts 查询打印。全程零 Cloudflare 登录（仅 --local）。
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { Item } from "../src/lib/schema";
 import { parseArchiveDates } from "../worker/sync/archive";
 import { parseIssue } from "../worker/sync/parse";
 import { companiesUpsertSql, itemsUpsertSql, sourcesUpsertSql } from "../worker/sync/sqlgen";
+import { parseWranglerJson, runWrangler } from "./lib/wrangler-cli";
 import { REGISTRY } from "../worker/registry.generated";
 
 // ---------- 常量 / 环境 ----------
@@ -87,48 +87,7 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-// ---------- wrangler 执行 ----------
-
-interface WranglerResult {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-}
-
-// 本地零登录执行 wrangler CLI：优先直跑本地 bin（node + wrangler.js，无 shell 转义歧义），
-// 缺失时回退 `npx wrangler`（shell）。等价于 spec 的 `npx wrangler d1 execute --local`。
-function runWrangler(args: string[]): WranglerResult {
-  const env = { ...process.env, WRANGLER_SEND_METRICS: "false" };
-  const localBin = path.join(ROOT, "node_modules", "wrangler", "bin", "wrangler.js");
-  if (existsSync(localBin)) {
-    const r = spawnSync(process.execPath, [localBin, ...args], {
-      cwd: ROOT,
-      encoding: "utf8",
-      maxBuffer: 128 * 1024 * 1024,
-      env,
-    });
-    return { ok: r.status === 0, stdout: r.stdout ?? "", stderr: r.stderr ?? String(r.error ?? "") };
-  }
-  const shellArg = (a: string): string => (/\s/.test(a) ? `"${a}"` : a);
-  const r = spawnSync(["npx", "wrangler", ...args.map(shellArg)].join(" "), {
-    cwd: ROOT,
-    shell: true,
-    encoding: "utf8",
-    maxBuffer: 128 * 1024 * 1024,
-    env,
-  });
-  return { ok: r.status === 0, stdout: r.stdout ?? "", stderr: r.stderr ?? String(r.error ?? "") };
-}
-
-// wrangler --json 输出可能混有横幅行：取首个 `[` 到最后一个 `]` 之间解析。
-function parseWranglerJson(stdout: string): unknown {
-  const start = stdout.indexOf("[");
-  const end = stdout.lastIndexOf("]");
-  if (start < 0 || end <= start) {
-    throw new Error(`wrangler --json 输出无法解析：${stdout.slice(0, 300)}`);
-  }
-  return JSON.parse(stdout.slice(start, end + 1));
-}
+// ---------- wrangler 执行（spec03 起迁移至 scripts/lib/wrangler-cli.ts，此处仅 import） ----------
 
 interface Counts {
   sources: number;

@@ -69,3 +69,32 @@ export function companiesUpsertSql(companies: Company[]): string {
     "color = excluded.color, status = excluded.status, notes = excluded.notes;"
   );
 }
+
+// ---------- item_companies / enrich_state（spec03）----------
+
+// 段一匹配结果写入：role 恒 NULL（ADR-0014 v1 单段）；冲突时以新 role 覆盖
+// （当前恒 NULL，未来 LLM enrich 回填复用同一语句）。
+export function itemCompaniesUpsertSql(rows: { itemId: string; companyId: string }[]): string {
+  if (rows.length === 0) return "";
+  const values = rows.map((r) => `(${quote(r.itemId)}, ${quote(r.companyId)}, NULL)`);
+  return (
+    "INSERT INTO item_companies (item_id, company_id, role) " +
+    `VALUES ${values.join(", ")} ` +
+    "ON CONFLICT(item_id, company_id) DO UPDATE SET role = excluded.role;"
+  );
+}
+
+// enrich_state 回写：ok / missing_owner 两档各一条 UPDATE ... IN（字面量）；
+// 空列表跳过对应语句（无 id 可更新时不出空 IN）。多语句按 SQL 纪律单语句单行。
+export function enrichStateUpdateSql(okIds: string[], missingIds: string[]): string {
+  const statements: string[] = [];
+  if (okIds.length > 0) {
+    statements.push(`UPDATE items SET enrich_state = 'ok' WHERE id IN (${okIds.map(quote).join(", ")});`);
+  }
+  if (missingIds.length > 0) {
+    statements.push(
+      `UPDATE items SET enrich_state = 'missing_owner' WHERE id IN (${missingIds.map(quote).join(", ")});`,
+    );
+  }
+  return statements.join("\n");
+}

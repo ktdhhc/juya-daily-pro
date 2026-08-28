@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
     "gen:registry": "tsx scripts/gen-registry.ts",
-    "backfill": "tsx scripts/backfill.ts"
+    "backfill": "tsx scripts/backfill.ts",
+    "match:all": "tsx scripts/match-all.ts"
   },
   "keywords": [],
   "author": "",

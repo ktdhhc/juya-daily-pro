@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 import type { Company, Item } from "../../src/lib/schema";
 import {
   companiesUpsertSql,
+  enrichStateUpdateSql,
   escapeSqlText,
+  itemCompaniesUpsertSql,
   itemsUpsertSql,
   sourcesUpsertSql,
 } from "./sqlgen";
@@ -189,5 +191,79 @@ describe("companiesUpsertSql", () => {
 
   it("空数组 → 空串", () => {
     expect(companiesUpsertSql([])).toBe("");
+  });
+});
+
+// ---------- itemCompaniesUpsertSql（spec03 Step 2）----------
+
+describe("itemCompaniesUpsertSql", () => {
+  it("role 恒 NULL（裸 NULL）+ ON CONFLICT(item_id, company_id) DO UPDATE SET role，; 收尾单语句", () => {
+    const sql = itemCompaniesUpsertSql([{ itemId: "20260827-1", companyId: "anthropic" }]);
+    expect(sql).toBe(
+      "INSERT INTO item_companies (item_id, company_id, role) " +
+        "VALUES ('20260827-1', 'anthropic', NULL) " +
+        "ON CONFLICT(item_id, company_id) DO UPDATE SET role = excluded.role;",
+    );
+    expect(sql).not.toContain("'NULL'"); // role 是裸 NULL，非字符串
+    expectDiscipline(sql);
+  });
+
+  it("多行 → VALUES 逗号连接为单语句", () => {
+    const sql = itemCompaniesUpsertSql([
+      { itemId: "20260827-1", companyId: "anthropic" },
+      { itemId: "20260827-1", companyId: "openai" },
+      { itemId: "20260828-2", companyId: "anthropic" },
+    ]);
+    expect(sql).toContain(
+      "VALUES ('20260827-1', 'anthropic', NULL), ('20260827-1', 'openai', NULL), " +
+        "('20260828-2', 'anthropic', NULL) ",
+    );
+    expectDiscipline(sql);
+  });
+
+  it("itemId/companyId 单引号翻倍转义", () => {
+    const sql = itemCompaniesUpsertSql([{ itemId: "it'1", companyId: "L'Oréal" }]);
+    expect(sql).toContain("'it''1', 'L''Oréal', NULL)");
+    expectDiscipline(sql);
+  });
+
+  it("空数组 → 空串", () => {
+    expect(itemCompaniesUpsertSql([])).toBe("");
+  });
+});
+
+// ---------- enrichStateUpdateSql（spec03 Step 2）----------
+
+describe("enrichStateUpdateSql", () => {
+  it("两列表 → 两条 UPDATE（ok 先、missing_owner 后），单语句单行、各 ; 收尾", () => {
+    const sql = enrichStateUpdateSql(["a", "b"], ["c"]);
+    const lines = sql.split("\n");
+    expect(lines).toEqual([
+      "UPDATE items SET enrich_state = 'ok' WHERE id IN ('a', 'b');",
+      "UPDATE items SET enrich_state = 'missing_owner' WHERE id IN ('c');",
+    ]);
+    for (const line of lines) expectDiscipline(line);
+  });
+
+  it("空列表跳过对应语句：仅 missing → 单条 missing_owner", () => {
+    const sql = enrichStateUpdateSql([], ["m1"]);
+    expect(sql).toBe("UPDATE items SET enrich_state = 'missing_owner' WHERE id IN ('m1');");
+    expectDiscipline(sql);
+  });
+
+  it("空列表跳过对应语句：仅 ok → 单条 ok", () => {
+    const sql = enrichStateUpdateSql(["o1"], []);
+    expect(sql).toBe("UPDATE items SET enrich_state = 'ok' WHERE id IN ('o1');");
+    expectDiscipline(sql);
+  });
+
+  it("双空 → 空串", () => {
+    expect(enrichStateUpdateSql([], [])).toBe("");
+  });
+
+  it("id 含单引号 → 字面量转义", () => {
+    const sql = enrichStateUpdateSql(["it's"], []);
+    expect(sql).toContain("'it''s'");
+    expectDiscipline(sql);
   });
 });
