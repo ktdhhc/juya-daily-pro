@@ -22,7 +22,7 @@
 
 ## 当前阶段
 
-阶段 0（清债）与阶段 1（解析器）已完成（2026-08-29）：typecheck / lint / test / CI 四道门禁就位；`worker/sync/parse.ts` 的 `parseIssue` 已把一期 Daily Issue 拆成结构化 Item[]（16 个 Vitest 测试，含两份真实 fixture 快照与 12 个边界 case）。14 枚 ADR 与 1 份 PRD 固化（2026-08-28 经 ADR-0013/0014 本地优先裁剪）。下一步为阶段 2（本地 D1 建表 + 回填）。首页仍是单页 Next.js 静态导出直连 daily.juya.uk；read API / D1 / 新视图尚未实现。
+阶段 0（清债）、1（解析器）、2（D1 建表 + 回填）已完成（2026-08-29）：test/typecheck/lint/build 四门禁 + CI 就位（vitest 52 测试）；`worker/sync/parse.ts` parseIssue 与 sqlgen/archive 纯函数齐备；本地模拟 D1 六表已建并完成全量回填（sources 72 / items 1105 / companies 30，幂等验证通过）。下一步为阶段 3（确定性白名单匹配）。首页仍是单页静态导出直连 daily.juya.uk；read API / 新视图尚未实现。
 
 ## 范围边界
 
@@ -41,7 +41,7 @@
 
 ## 主流程关键事实
 
-1. **数据流（v1）**：`npm run sync` 查 `max(items.date)` + `SYNC_LOOKBACK_DAYS` → 抓 daily.juya.uk archive → 拉新期 markdown → 写 D1 `sources` → `parseMarkdown` → `matchCompanies`（确定性单段，ADR-0014）→ upsert D1。`npm run backfill` 为全量历史回填。均幂等（`ON CONFLICT DO UPDATE`）。
+1. **数据流（v1）**：`npm run sync` 查 `max(items.date)` + `SYNC_LOOKBACK_DAYS` → 抓 daily.juya.uk archive → 拉新期 markdown → 写 D1 `sources` → `parseIssue` → `matchCompanies`（确定性单段，ADR-0014）→ upsert D1。`npm run backfill` 为全量历史回填。均幂等（`ON CONFLICT DO UPDATE`）。**当前状态：backfill 已跑通（sources 72 / items 1105 / companies 30），sync 待阶段 5。**
 2. **前端取数**：三新视图 `/stream` `/company` `/company/[id]` 走相对路径 `/api/*`（dev 由 next.config rewrites 代理到本地 `wrangler dev :8787`）；**首页 `/` 维持直连 daily.juya.uk 不变**（部署日才迁移统一口径，ADR-0013）。
 3. **白名单闸门**：只有 `data/companies.yaml` 中登记的 Company 才会被标到 Item 上，retired 公司不参与匹配。yaml 是唯一真相源，sync 时幂等 upsert D1 `companies` 表。
 4. **归属规则（v1）**：单段确定性匹配——0 命中 `missing_owner`（仍入库）、1 家单归属、≥2 家并列归属且 **role 全部 NULL**（徽章并列不分主次）；LLM enrich（role 回填）为部署日后离线任务，`enrich_cache` 表保留但 v1 不写入。
@@ -83,7 +83,12 @@ src/lib/matchCompanies.ts     # 段一确定性匹配器（ADR-0003 段一落地
 src/lib/juya.ts               # 日报数据源 fetch + parseMarkdown 概览解析（原 github.ts；部署日 fetch 下沉 Worker）
 worker/sync/parse.ts          # parseIssue：一期 md → {date, Item[]} 纯函数（规则真相源 docs/spec/spec01 2.2）
 worker/sync/parse.test.ts     # 16 测试：fixture 快照 ×4 + 边界 case ×12；快照 diff 即日报结构漂移报警
-worker/sync/fixtures/         # 真实日报语料（2026-08-27 / 2026-08-25）
+worker/sync/fixtures/         # 真实日报语料（2026-08-27 / 2026-08-25）+ archive 页样本（archive-sample.html）
+worker/sync/archive.ts        # parseArchiveDates：archive HTML → 期日期列表（去重倒序）
+worker/sync/sqlgen.ts         # D1 upsert SQL 生成纯函数（escape / sources / items / companies）
+scripts/gen-registry.ts       # data/companies.yaml → worker/registry.generated.ts（含校验；npm run gen:registry）
+worker/registry.generated.ts  # 生成物：REGISTRY: Company[]（30 家）——勿手改，改 yaml 后重跑 gen:registry
+scripts/backfill.ts           # 全量回填胶水：archive → parse → sqlgen → wrangler d1 execute --local（npm run backfill，幂等）
 eslint.config.mjs             # lint 门禁（next 预设；set-state-in-effect 降级 warn 的理由见文件内注释）
 .github/workflows/ci.yml      # CI：npm ci + typecheck + lint + build（无部署 step）
 data/companies.yaml           # Company Registry 真相源（31 家种子）
@@ -128,10 +133,11 @@ backfill / sync：`npm run backfill` / `npm run sync` 在根目录执行（本�
 ## 当前可维护性热点
 
 - 升级版 Item 解析器已落 `worker/sync/parse.ts`（`parseIssue`）；`src/lib/juya.ts` 的 parseMarkdown 保持概览解析旧形态供首页使用，两者勿混用。
+- `worker/registry.generated.ts` 是生成物——改公司白名单要改 `data/companies.yaml` 后跑 `npm run gen:registry`，勿手改生成物。
+- 本地 D1 数据存于 `.wrangler/state/`（gitignored）；清空该目录即重置本地库，重跑 `wrangler d1 execute --local --file worker/sync/schema.sql` + `npm run backfill` 即恢复。
 - lint 存量 5 处 warn（`react-hooks/set-state-in-effect`，DailyPage/ThemeToggle 挂载期同步模式）——spec 04 重写状态流时收敛，勿提前重构。
 - 类型契约与 schema 已建（`src/lib/schema.ts`），但 Worker 与前端尚未消费——落地时务必匹配这套形状。
-- `wrangler.jsonc` 里 `database_id` 当前是占位符 `REPLACE_WITH_REAL_D1_ID`，部署日（阶段 6）才需替换。
-- `worker/sync/schema.sql` 当前是五表，缺 `sources` 表——阶段 2 增补（勿在阶段 2 之前手动加，保持阶段边界）。
+- `wrangler.jsonc` 里 `database_id` 当前是占位符 `REPLACE_WITH_REAL_D1_ID`（本地模拟不需要真实 id），部署日（阶段 6）才需替换。`secrets` 字段必须保持对象形态 `{ "required": [...] }`（wrangler ≥4.69 拒绝数组形态）。
 
 ## 后续会话约束
 
