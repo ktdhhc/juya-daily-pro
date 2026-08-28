@@ -147,3 +147,17 @@
 - 保持文档与行为一致；如果重大工作流假设发生变化，更新 `docs/CURRENT_STATE.md` 或相关 ADR。
 - 如果新增架构权衡满足"难逆转 + 不读会困惑 + 真实取舍"三条，写新 ADR 进 `docs/adr/`（编号递增、格式见 ADR-FORMAT）。
 - 如果仅是术语边界变化，更新 `CONTEXT.md` 的 `_Avoid_` 标签。
+
+## 八、Agent skills
+
+### Issue tracker
+
+本地 markdown 票仓：spec 在 `docs/spec/`，实施票在 `.scratch/<spec-name>/issues/`。See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+五个标准 triage 角色，默认命名，以 issue 文件内 `Status:` 行记录。See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+单上下文仓库：先读 `docs/CURRENT_STATE.md`，术语以 `CONTEXT.md` 为准，ADR 按需查。See `docs/agents/domain.md`.
