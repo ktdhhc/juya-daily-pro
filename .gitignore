@@ -7,3 +7,4 @@ out/
 .opencode/
 .omo/
 demo/
+.env
