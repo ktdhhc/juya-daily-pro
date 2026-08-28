@@ -22,7 +22,7 @@
 
 ## 当前阶段
 
-阶段 0-4 已完成（2026-08-29）：read API 5 端点（`worker/api/`，wrangler dev :8787）+ 三视图（`/stream`、`/company`、`/company/[id]`，FRONTEND_DESIGN「合订本×轻科技」落地）+ 报头/合订本/骨架改造；vitest 104 测试；本地 D1：items 1105（ok 863 / missing_owner 242）、item_companies 1222、companies 30。本地双进程（`npm run dev` :3000 + `wrangler dev` :8787）全链路可用，浏览器截图验证通过。下一步为阶段 5（`npm run sync` 手动增量同步），之后即部署日门槛。
+**阶段 0-5（v1 本地 MVP）全部完成（2026-08-29）**：read API 5 端点 + 三视图（FRONTEND_DESIGN 落地）+ `npm run sync` 增量同步（幂等、单期容错写 sync_log）+ vitest 115 测试 + 双 typecheck + lint/CI 门禁。本地双进程全链路可用（`npm run dev` :3000 + `wrangler dev` :8787），浏览器截图验证通过。**下一站是部署日（阶段 6，需用户在场）**：Cloudflare 登录 → 替换 database_id → 生产 D1 + `wrangler deploy` + 启用 crons → Pages 部署 + /api 同域代理 → 首页迁移 read API → enrich 离线回填（LLM）。
 
 ## 范围边界
 
