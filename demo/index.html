@@ -1,0 +1,1654 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>橘鸦 AI 日报 — Juya AI Daily</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=Orbitron:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #faf8f5; --bg-warm: #f3efe8; --bg-card: #ffffff; --bg-elevated: #ffffff;
+    --fg: #1a1a1a; --fg-light: #4a4a4a; --fg-muted: #8a8a8a; --fg-subtle: #b0b0b0;
+    --accent: #c44b2b; --accent-hover: #a33d22; --accent-soft: #fdf0ec; --accent-muted: #f5e0d8;
+    --border: #e8e2d9; --border-strong: #d4cdc3; --border-subtle: #f0ebe3;
+    --tag-bg: #f0ebe3; --tag-text: #6b5e4f;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04); --shadow-md: 0 4px 12px rgba(0,0,0,0.06); --shadow-lg: 0 12px 40px rgba(0,0,0,0.08);
+    --font-display: "Playfair Display", "Noto Serif SC", Georgia, serif;
+    --font-body: "Source Han Sans SC", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", monospace;
+    --radius-sm: 6px; --radius-md: 10px; --radius-lg: 16px; --radius-xl: 24px;
+    --transition-fast: 0.15s ease; --transition-base: 0.3s ease; --transition-slow: 0.5s ease;
+  }
+
+  [data-theme="ink"] {
+    --bg: #141210; --bg-warm: #1c1a17; --bg-card: #1e1c18; --bg-elevated: #222019;
+    --fg: #e8e4df; --fg-light: #b0aaa0; --fg-muted: #706b63; --fg-subtle: #5a554d;
+    --accent: #e8653f; --accent-hover: #f07a55; --accent-soft: #2a1d17; --accent-muted: #3d2a20;
+    --border: #2e2b26; --border-strong: #3d3932; --border-subtle: #25221d;
+    --tag-bg: #2a2720; --tag-text: #b0a690;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3); --shadow-md: 0 4px 12px rgba(0,0,0,0.4); --shadow-lg: 0 12px 40px rgba(0,0,0,0.5);
+  }
+  [data-theme="cyber"] {
+    --bg: #07080c; --bg-warm: #0c0e15; --bg-card: #0d1117; --bg-elevated: #10131c;
+    --fg: #d0f0ff; --fg-light: #8cb4cc; --fg-muted: #4a6a80; --fg-subtle: #3a5060;
+    --accent: #00e5ff; --accent-hover: #40efff; --accent-soft: #001e29; --accent-muted: #0a2a35;
+    --border: #162030; --border-strong: #1e3045; --border-subtle: #0d1a25;
+    --tag-bg: #0d1a25; --tag-text: #5cc8e0;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.5); --shadow-md: 0 4px 12px rgba(0,0,0,0.6); --shadow-lg: 0 12px 40px rgba(0,0,0,0.7);
+    --font-display: "Orbitron", "Noto Sans SC", monospace;
+    --font-body: "JetBrains Mono", "Fira Code", "Noto Sans SC", monospace;
+  }
+  [data-theme="mono"] {
+    --bg: #fafafa; --bg-warm: #f5f5f5; --bg-card: #ffffff; --bg-elevated: #ffffff;
+    --fg: #111111; --fg-light: #444444; --fg-muted: #777777; --fg-subtle: #aaaaaa;
+    --accent: #111111; --accent-hover: #333333; --accent-soft: #f0f0f0; --accent-muted: #e8e8e8;
+    --border: #e5e5e5; --border-strong: #d0d0d0; --border-subtle: #f5f5f5;
+    --tag-bg: #f5f5f5; --tag-text: #666666;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04); --shadow-md: 0 4px 12px rgba(0,0,0,0.06); --shadow-lg: 0 12px 40px rgba(0,0,0,0.08);
+    --font-display: system-ui, -apple-system, "Noto Sans SC", sans-serif;
+    --font-body: system-ui, -apple-system, "Noto Sans SC", sans-serif;
+  }
+  [data-theme="dune"] {
+    --bg: #faf6f0; --bg-warm: #f2ebe0; --bg-card: #fffdf8; --bg-elevated: #fffdf8;
+    --fg: #3d2e1e; --fg-light: #5c4a38; --fg-muted: #a09080; --fg-subtle: #c4b8a8;
+    --accent: #c07a28; --accent-hover: #a86820; --accent-soft: #fdf3e4; --accent-muted: #f5e8d4;
+    --border: #e6ddd0; --border-strong: #d4c8b5; --border-subtle: #f0e8d8;
+    --tag-bg: #f0e8d8; --tag-text: #7a6a52;
+    --shadow-sm: 0 1px 2px rgba(100,70,30,0.05); --shadow-md: 0 4px 12px rgba(100,70,30,0.08); --shadow-lg: 0 12px 40px rgba(100,70,30,0.1);
+    --font-display: "DM Sans", "Noto Sans SC", system-ui, sans-serif;
+    --font-body: "DM Sans", "Noto Sans SC", system-ui, sans-serif;
+  }
+  [data-theme="blueprint"] {
+    --bg: #f8faff; --bg-warm: #eef2fb; --bg-card: #ffffff; --bg-elevated: #ffffff;
+    --fg: #1e293b; --fg-light: #475569; --fg-muted: #94a3b8; --fg-subtle: #b8c5d6;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --accent-soft: #eff6ff; --accent-muted: #dbeafe;
+    --border: #e2e8f0; --border-strong: #cbd5e1; --border-subtle: #f1f5f9;
+    --tag-bg: #eef2ff; --tag-text: #4f5d7a;
+    --shadow-sm: 0 1px 2px rgba(37,99,235,0.04); --shadow-md: 0 4px 12px rgba(37,99,235,0.06); --shadow-lg: 0 12px 40px rgba(37,99,235,0.08);
+    --font-display: "IBM Plex Mono", "Noto Sans SC", monospace;
+    --font-body: "IBM Plex Sans", "Noto Sans SC", system-ui, sans-serif;
+  }
+
+  html { scroll-behavior: smooth; overflow-x: hidden; }
+  body {
+    background-color: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    transition: background-color 0.5s ease, color 0.4s ease;
+  }
+  ::selection { background-color: var(--accent); color: white; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+  /* ══════════════════════════════════════════
+     HEADER & NAV
+     ══════════════════════════════════════════ */
+  .site-header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border-bottom: 1px solid var(--border);
+    transition: all 0.3s ease;
+  }
+  .header-inner {
+    max-width: 1100px; margin: 0 auto;
+    padding: 0 1.5rem;
+    height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .site-brand {
+    font-family: var(--font-display);
+    font-weight: 700; font-size: 1.1rem; letter-spacing: -0.02em;
+    color: var(--fg); text-decoration: none;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .site-brand-icon {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--accent); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 0.75rem; font-weight: 700;
+  }
+  .header-nav {
+    display: flex; align-items: center; gap: 0.25rem;
+  }
+  .nav-link {
+    padding: 0.5rem 0.875rem; border-radius: var(--radius-sm);
+    font-size: 0.875rem; font-weight: 500; color: var(--fg-muted);
+    text-decoration: none; cursor: pointer;
+    transition: all var(--transition-fast);
+    position: relative;
+  }
+  .nav-link:hover { color: var(--fg); background: var(--bg-warm); }
+  .nav-link.active { color: var(--accent); background: var(--accent-soft); }
+  .nav-link.active::after {
+    content: ''; position: absolute; bottom: -2px; left: 0.875rem; right: 0.875rem;
+    height: 2px; background: var(--accent); border-radius: 1px;
+  }
+  .header-actions {
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .icon-btn {
+    width: 36px; height: 36px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid var(--border);
+    color: var(--fg-muted); cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+  .icon-btn:hover {
+    background: var(--bg-card); border-color: var(--border-strong);
+    color: var(--fg); transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
+  .icon-btn:active { transform: scale(0.95); }
+
+  /* Progress bar */
+  .reading-progress {
+    position: absolute; bottom: -1px; left: 0;
+    width: 100%; height: 2px;
+    background: var(--accent);
+    transform-origin: left;
+    transform: scaleX(0);
+    will-change: transform;
+    z-index: 2;
+    transition: transform 0.1s linear;
+  }
+
+  /* ══════════════════════════════════════════
+     MAIN LAYOUT
+     ══════════════════════════════════════════ */
+  .main-content {
+    max-width: 1100px; margin: 0 auto;
+    padding: 72px 1.5rem 3rem;
+    min-height: 100vh;
+  }
+
+  /* ══════════════════════════════════════════
+     VIEW TRANSITIONS
+     ══════════════════════════════════════════ */
+  .view {
+    display: none;
+    animation: viewEnter 0.4s ease-out;
+  }
+  .view.active { display: block; }
+  @keyframes viewEnter {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ══════════════════════════════════════════
+     DAILY VIEW — HERO
+     ══════════════════════════════════════════ */
+  .daily-hero {
+    padding: 2rem 0 1.5rem;
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2rem;
+  }
+  .daily-hero-left {
+    display: flex; flex-direction: column; gap: 0.25rem;
+  }
+  .daily-hero-meta {
+    font-size: 0.75rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--fg-muted);
+  }
+  .daily-hero-date {
+    font-family: var(--font-display);
+    font-size: 4rem; font-weight: 700;
+    line-height: 1; letter-spacing: -0.03em;
+    color: var(--fg);
+    display: flex; align-items: baseline; gap: 0.5rem;
+  }
+  .daily-hero-date span {
+    font-size: 1rem; font-weight: 400;
+    font-family: var(--font-body);
+    color: var(--fg-muted);
+    letter-spacing: 0;
+  }
+  .daily-hero-issue {
+    font-size: 0.8rem; color: var(--fg-muted);
+    font-family: var(--font-mono);
+  }
+  .daily-hero-nav {
+    display: flex; gap: 0.5rem;
+  }
+  .hero-nav-btn {
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--fg-light);
+    font-size: 0.8rem; font-weight: 500;
+    cursor: pointer; transition: all var(--transition-fast);
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .hero-nav-btn:hover {
+    border-color: var(--accent); color: var(--accent);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* ══════════════════════════════════════════
+     OVERVIEW CARD
+     ══════════════════════════════════════════ */
+  .overview-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-bottom: 3rem;
+  }
+  .overview-category {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    transition: all var(--transition-base);
+  }
+  .overview-category:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+    border-color: var(--border-strong);
+  }
+  .overview-category-header {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.75rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .overview-category-count {
+    margin-left: auto;
+    background: var(--accent-soft); color: var(--accent);
+    padding: 0.125rem 0.5rem; border-radius: 9999px;
+    font-size: 0.7rem; font-weight: 600;
+  }
+  .overview-item {
+    display: flex; align-items: flex-start; gap: 0.625rem;
+    padding: 0.5rem 0;
+    font-size: 0.875rem; line-height: 1.6;
+    color: var(--fg-light);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    border-radius: var(--radius-sm);
+    margin: 0 -0.5rem; padding-left: 0.5rem; padding-right: 0.5rem;
+  }
+  .overview-item:hover {
+    background: var(--bg-warm);
+    color: var(--fg);
+  }
+  .overview-item-tag {
+    flex-shrink: 0;
+    font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600;
+    padding: 0.15rem 0.4rem;
+    background: var(--accent-soft); color: var(--accent);
+    border-radius: 4px;
+    transition: all var(--transition-fast);
+  }
+  .overview-item:hover .overview-item-tag {
+    background: var(--accent); color: white;
+  }
+  .overview-item-text {
+    flex: 1;
+  }
+  .overview-item-link {
+    color: var(--accent); text-decoration: none;
+    font-size: 0.8rem; opacity: 0;
+    transition: opacity var(--transition-fast);
+    margin-left: 0.25rem;
+  }
+  .overview-item:hover .overview-item-link { opacity: 1; }
+
+  /* ══════════════════════════════════════════
+     ARTICLE CONTENT
+     ══════════════════════════════════════════ */
+  .article-list {
+    display: flex; flex-direction: column; gap: 3rem;
+  }
+  .article-item {
+    scroll-margin-top: 80px;
+    animation: fadeInUp 0.5s ease-out;
+    animation-fill-mode: both;
+  }
+  .article-item:nth-child(1) { animation-delay: 0.05s; }
+  .article-item:nth-child(2) { animation-delay: 0.1s; }
+  .article-item:nth-child(3) { animation-delay: 0.15s; }
+  .article-item:nth-child(4) { animation-delay: 0.2s; }
+  .article-item:nth-child(5) { animation-delay: 0.25s; }
+  .article-item:nth-child(6) { animation-delay: 0.3s; }
+
+  .article-header {
+    display: flex; align-items: baseline; gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .article-number {
+    font-family: var(--font-mono);
+    font-size: 0.8rem; font-weight: 700;
+    color: var(--accent);
+    padding: 0.25rem 0.5rem;
+    background: var(--accent-soft);
+    border-radius: 6px;
+  }
+  .article-title {
+    font-family: var(--font-display);
+    font-size: 1.35rem; font-weight: 700;
+    line-height: 1.3; color: var(--fg);
+    letter-spacing: -0.01em;
+  }
+  .article-title a {
+    color: inherit; text-decoration: none;
+    transition: color var(--transition-fast);
+  }
+  .article-title a:hover { color: var(--accent); }
+
+  .article-body {
+    color: var(--fg-light);
+    font-size: 0.95rem; line-height: 1.8;
+  }
+  .article-body p { margin-bottom: 1rem; }
+  .article-body p:last-child { margin-bottom: 0; }
+  .article-body strong { color: var(--fg); font-weight: 600; }
+  .article-body a { color: var(--accent); text-decoration: none; transition: opacity var(--transition-fast); }
+  .article-body a:hover { opacity: 0.7; text-decoration: underline; }
+  .article-body blockquote {
+    margin: 1rem 0; padding: 1rem 1.25rem;
+    background: var(--bg-warm); border-radius: var(--radius-md);
+    border-left: 3px solid var(--accent);
+    font-style: italic;
+  }
+  .article-body blockquote p { margin-bottom: 0.5rem; }
+  .article-body blockquote p:last-child { margin-bottom: 0; }
+
+  .article-companies {
+    display: flex; gap: 0.5rem; flex-wrap: wrap;
+    margin-top: 1rem;
+  }
+  .company-chip {
+    padding: 0.375rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.8rem; font-weight: 500;
+    background: var(--tag-bg); color: var(--tag-text);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+  .company-chip:hover {
+    background: var(--accent-soft); color: var(--accent);
+    border-color: var(--accent);
+    transform: translateY(-1px);
+  }
+  .company-chip.primary {
+    background: var(--accent-soft); color: var(--accent);
+    border-color: var(--accent-muted);
+  }
+  .company-chip.partner {
+    background: var(--bg-warm); color: var(--fg-light);
+  }
+
+  .related-links {
+    margin-top: 1.25rem;
+    padding: 1rem;
+    background: var(--bg-warm);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+  }
+  .related-links-label {
+    font-size: 0.7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--fg-muted);
+    margin-bottom: 0.75rem;
+  }
+  .related-links-list {
+    display: flex; flex-direction: column; gap: 0.5rem;
+  }
+  .related-link {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.85rem; color: var(--fg-muted);
+    text-decoration: none;
+    transition: all var(--transition-fast);
+    padding: 0.25rem 0;
+  }
+  .related-link::before {
+    content: '→'; font-size: 0.7rem; color: var(--accent);
+  }
+  .related-link:hover {
+    color: var(--accent); padding-left: 0.25rem;
+  }
+
+  /* ══════════════════════════════════════════
+     TIMELINE VIEW
+     ══════════════════════════════════════════ */
+  .timeline-header {
+    padding: 1.5rem 0 2rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2rem;
+  }
+  .timeline-title {
+    font-family: var(--font-display);
+    font-size: 2rem; font-weight: 700;
+    color: var(--fg); margin-bottom: 0.5rem;
+  }
+  .timeline-subtitle {
+    font-size: 0.9rem; color: var(--fg-muted);
+  }
+
+  .timeline-filters {
+    display: flex; gap: 1rem; flex-wrap: wrap;
+    margin-bottom: 2rem;
+    padding: 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+  .filter-group {
+    display: flex; flex-direction: column; gap: 0.375rem;
+    min-width: 160px;
+  }
+  .filter-label {
+    font-size: 0.7rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--fg-muted);
+  }
+  .filter-select {
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+  .filter-select:hover, .filter-select:focus {
+    border-color: var(--accent);
+    outline: none;
+  }
+
+  .timeline-day {
+    margin-bottom: 3rem;
+  }
+  .timeline-day-header {
+    display: flex; align-items: center; gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid var(--border);
+  }
+  .timeline-day-date {
+    font-family: var(--font-display);
+    font-size: 1.25rem; font-weight: 700;
+    color: var(--fg);
+    white-space: nowrap;
+  }
+  .timeline-day-line {
+    flex: 1; height: 1px;
+    background: linear-gradient(90deg, var(--border-strong), transparent);
+  }
+  .timeline-day-count {
+    font-size: 0.8rem; color: var(--fg-muted);
+    font-family: var(--font-mono);
+  }
+
+  .timeline-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1rem;
+  }
+  .timeline-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    transition: all var(--transition-base);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .timeline-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 3px; background: var(--accent);
+    transform: scaleX(0); transform-origin: left;
+    transition: transform var(--transition-base);
+  }
+  .timeline-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-3px);
+    border-color: var(--border-strong);
+  }
+  .timeline-card:hover::before {
+    transform: scaleX(1);
+  }
+  .timeline-card-header {
+    display: flex; align-items: center; gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  .timeline-card-tag {
+    font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
+    padding: 0.15rem 0.4rem;
+    background: var(--accent-soft); color: var(--accent);
+    border-radius: 4px;
+  }
+  .timeline-card-category {
+    font-size: 0.7rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--fg-muted);
+  }
+  .timeline-card-title {
+    font-size: 1rem; font-weight: 600;
+    line-height: 1.4; color: var(--fg);
+    margin-bottom: 0.75rem;
+  }
+  .timeline-card-summary {
+    font-size: 0.85rem; line-height: 1.6;
+    color: var(--fg-light);
+    margin-bottom: 1rem;
+  }
+  .timeline-card-meta {
+    display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  }
+  .timeline-card-company {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem; font-weight: 500;
+    background: var(--tag-bg); color: var(--tag-text);
+  }
+
+  /* ══════════════════════════════════════════
+     COMPANY VIEW
+     ══════════════════════════════════════════ */
+  .company-header {
+    padding: 1.5rem 0 2rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2rem;
+  }
+  .company-header-title {
+    font-family: var(--font-display);
+    font-size: 2rem; font-weight: 700;
+    color: var(--fg); margin-bottom: 0.5rem;
+  }
+  .company-header-subtitle {
+    font-size: 0.9rem; color: var(--fg-muted);
+  }
+
+  .company-search {
+    margin-bottom: 2rem;
+  }
+  .search-input {
+    width: 100%; max-width: 400px;
+    padding: 0.75rem 1rem 0.75rem 2.5rem;
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--fg);
+    font-size: 0.9rem;
+    transition: all var(--transition-base);
+    position: relative;
+  }
+  .search-input:hover, .search-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    outline: none;
+  }
+
+  .company-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+  }
+  .company-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    transition: all var(--transition-base);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .company-card::after {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+    height: 4px; background: var(--accent);
+    transform: scaleX(0); transform-origin: left;
+    transition: transform var(--transition-base);
+  }
+  .company-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-3px);
+    border-color: var(--border-strong);
+  }
+  .company-card:hover::after {
+    transform: scaleX(1);
+  }
+  .company-card-header {
+    display: flex; align-items: center; gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .company-card-avatar {
+    width: 48px; height: 48px; border-radius: 12px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 1.25rem; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .company-card-name {
+    font-size: 1.1rem; font-weight: 700;
+    color: var(--fg);
+  }
+  .company-card-count {
+    font-size: 0.8rem; color: var(--fg-muted);
+    margin-top: 0.125rem;
+  }
+  .company-card-desc {
+    font-size: 0.85rem; line-height: 1.6;
+    color: var(--fg-light);
+  }
+
+  /* ══════════════════════════════════════════
+     COMPANY PROFILE VIEW
+     ══════════════════════════════════════════ */
+  .profile-header {
+    padding: 2rem 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2rem;
+  }
+  .profile-header-inner {
+    display: flex; align-items: flex-start; gap: 1.5rem;
+  }
+  .profile-avatar {
+    width: 64px; height: 64px; border-radius: 16px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 1.75rem; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .profile-header-content {
+    flex: 1;
+  }
+  .profile-name {
+    font-family: var(--font-display);
+    font-size: 1.75rem; font-weight: 700;
+    color: var(--fg); margin-bottom: 0.25rem;
+  }
+  .profile-desc {
+    font-size: 0.9rem; color: var(--fg-light);
+    margin-bottom: 1rem;
+  }
+  .profile-stats {
+    display: flex; gap: 1.5rem;
+  }
+  .profile-stat {
+    display: flex; flex-direction: column;
+  }
+  .profile-stat-value {
+    font-family: var(--font-mono);
+    font-size: 1.25rem; font-weight: 700;
+    color: var(--accent);
+  }
+  .profile-stat-label {
+    font-size: 0.75rem; color: var(--fg-muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+
+  .profile-section-title {
+    font-size: 0.8rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--fg-muted);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .profile-timeline {
+    display: flex; flex-direction: column; gap: 1.5rem;
+  }
+  .profile-timeline-item {
+    display: flex; gap: 1rem;
+    position: relative;
+    padding-left: 1.5rem;
+  }
+  .profile-timeline-item::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: -1.5rem;
+    width: 2px; background: var(--border);
+  }
+  .profile-timeline-item:last-child::before {
+    bottom: 0;
+  }
+  .profile-timeline-dot {
+    position: absolute; left: -3px; top: 0.5rem;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg-card);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .profile-timeline-date {
+    font-size: 0.8rem; color: var(--fg-muted);
+    font-family: var(--font-mono);
+    margin-bottom: 0.25rem;
+  }
+  .profile-timeline-title {
+    font-size: 1rem; font-weight: 600;
+    color: var(--fg); margin-bottom: 0.5rem;
+  }
+  .profile-timeline-summary {
+    font-size: 0.85rem; line-height: 1.6;
+    color: var(--fg-light);
+  }
+
+  /* ══════════════════════════════════════════
+     FLOATING ELEMENTS
+     ══════════════════════════════════════════ */
+  .back-to-top {
+    position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 50;
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg-card); color: var(--fg-muted);
+    border: 1px solid var(--border);
+    border-radius: 12px; cursor: pointer;
+    box-shadow: var(--shadow-md);
+    transition: all var(--transition-base);
+    opacity: 0; pointer-events: none;
+    transform: translateY(10px);
+  }
+  .back-to-top.visible {
+    opacity: 1; pointer-events: auto;
+    transform: translateY(0);
+  }
+  .back-to-top:hover {
+    color: var(--accent); border-color: var(--accent);
+    transform: scale(1.05);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* ══════════════════════════════════════════
+     THEME PANEL
+     ══════════════════════════════════════════ */
+  .theme-panel-overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.2);
+    backdrop-filter: blur(4px);
+    display: none; align-items: flex-start; justify-content: flex-end;
+    padding: 4rem 1.5rem 1.5rem;
+  }
+  .theme-panel-overlay.active { display: flex; }
+  .theme-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: 280px;
+    overflow: hidden;
+    animation: panelSlide 0.2s ease-out;
+  }
+  @keyframes panelSlide {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .theme-panel-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875rem; font-weight: 600;
+    color: var(--fg);
+  }
+  .theme-options {
+    padding: 0.5rem;
+  }
+  .theme-option {
+    width: 100%; display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--radius-sm);
+    background: transparent; border: none;
+    cursor: pointer; text-align: left;
+    transition: all var(--transition-fast);
+  }
+  .theme-option:hover { background: var(--bg-warm); }
+  .theme-option.active { background: var(--accent-soft); }
+  .theme-swatch {
+    width: 24px; height: 24px; border-radius: 8px;
+    flex-shrink: 0; position: relative;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1);
+  }
+  .theme-swatch::after {
+    content: ''; position: absolute; inset: -2px;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    transition: border-color var(--transition-fast);
+  }
+  .theme-option.active .theme-swatch::after {
+    border-color: var(--accent);
+  }
+  .theme-info {
+    display: flex; flex-direction: column;
+  }
+  .theme-name {
+    font-size: 0.875rem; font-weight: 600;
+    color: var(--fg);
+  }
+  .theme-name-en {
+    font-size: 0.75rem; color: var(--fg-muted);
+  }
+  .theme-option.active .theme-name { color: var(--accent); }
+  .theme-check {
+    margin-left: auto;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--accent); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem;
+    opacity: 0; transform: scale(0);
+    transition: all var(--transition-fast);
+  }
+  .theme-option.active .theme-check {
+    opacity: 1; transform: scale(1);
+  }
+
+  /* ══════════════════════════════════════════
+     ANIMATIONS
+     ══════════════════════════════════════════ */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ══════════════════════════════════════════
+     FOOTER
+     ══════════════════════════════════════════ */
+  .site-footer {
+    margin-top: 4rem; padding: 2rem 0;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+  .site-footer p {
+    font-size: 0.8rem; color: var(--fg-muted);
+  }
+  .site-footer a {
+    color: var(--accent); text-decoration: none;
+    transition: opacity var(--transition-fast);
+  }
+  .site-footer a:hover { opacity: 0.7; }
+
+  /* ══════════════════════════════════════════
+     RESPONSIVE
+     ══════════════════════════════════════════ */
+  @media (max-width: 768px) {
+    .header-nav { display: none; }
+    .main-content { padding: 72px 1rem 2rem; }
+    .daily-hero { flex-direction: column; align-items: flex-start; }
+    .daily-hero-date { font-size: 3rem; }
+    .overview-container { grid-template-columns: 1fr; }
+    .timeline-cards { grid-template-columns: 1fr; }
+    .company-grid { grid-template-columns: 1fr; }
+    .profile-header-inner { flex-direction: column; }
+    .profile-stats { gap: 1rem; }
+  }
+</style>
+</head>
+<body data-theme="editorial">
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="#/" class="site-brand" onclick="navigate('/')">
+      <span class="site-brand-icon">橘</span>
+      橘鸦 AI 日报
+    </a>
+    <nav class="header-nav">
+      <a href="#/" class="nav-link active" data-view="daily" onclick="navigate('/')">日报</a>
+      <a href="#/timeline" class="nav-link" data-view="timeline" onclick="navigate('/timeline')">事件流</a>
+      <a href="#/company" class="nav-link" data-view="company" onclick="navigate('/company')">公司</a>
+    </nav>
+    <div class="header-actions">
+      <button class="icon-btn" onclick="toggleThemePanel()" title="切换主题">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"/>
+          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+  <div class="reading-progress" id="readingProgress"></div>
+</header>
+
+<main class="main-content">
+
+<!-- ══════════════════════════════════════════
+   VIEW: DAILY
+   ══════════════════════════════════════════ -->
+<div class="view active" id="view-daily">
+  <div class="daily-hero">
+    <div class="daily-hero-left">
+      <div class="daily-hero-meta">July 2026 · Issue #210</div>
+      <div class="daily-hero-date">
+        21<span>周一</span>
+      </div>
+      <div class="daily-hero-issue">2026-07-21</div>
+    </div>
+    <div class="daily-hero-nav">
+      <button class="hero-nav-btn" onclick="alert('前一天：2026-07-20')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        前一天
+      </button>
+      <button class="hero-nav-btn" onclick="alert('后一天：2026-07-22')">
+        后一天
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="overview-container">
+    <div class="overview-category">
+      <div class="overview-category-header">
+        <span>🔥</span> 要闻
+        <span class="overview-category-count">2</span>
+      </div>
+      <div class="overview-item" onclick="scrollToArticle('1')">
+        <span class="overview-item-tag">#1</span>
+        <span class="overview-item-text">
+          Kimi 发布 k1.5 推理模型
+          <a href="#" class="overview-item-link" onclick="event.stopPropagation()">↗</a>
+        </span>
+      </div>
+      <div class="overview-item" onclick="scrollToArticle('2')">
+        <span class="overview-item-tag">#2</span>
+        <span class="overview-item-text">
+          OpenAI GPT-5 预览版开放测试
+          <a href="#" class="overview-item-link" onclick="event.stopPropagation()">↗</a>
+        </span>
+      </div>
+    </div>
+    <div class="overview-category">
+      <div class="overview-category-header">
+        <span>🧠</span> 模型发布
+        <span class="overview-category-count">1</span>
+      </div>
+      <div class="overview-item" onclick="scrollToArticle('3')">
+        <span class="overview-item-tag">#3</span>
+        <span class="overview-item-text">
+          Mistral 推出 Small 3.1
+          <a href="#" class="overview-item-link" onclick="event.stopPropagation()">↗</a>
+        </span>
+      </div>
+    </div>
+    <div class="overview-category">
+      <div class="overview-category-header">
+        <span>📱</span> 产品应用
+        <span class="overview-category-count">1</span>
+      </div>
+      <div class="overview-item" onclick="scrollToArticle('4')">
+        <span class="overview-item-tag">#4</span>
+        <span class="overview-item-text">
+          苹果 iOS 19 AI 升级曝光
+          <a href="#" class="overview-item-link" onclick="event.stopPropagation()">↗</a>
+        </span>
+      </div>
+    </div>
+    <div class="overview-category">
+      <div class="overview-category-header">
+        <span>📊</span> 行业动态
+        <span class="overview-category-count">1</span>
+      </div>
+      <div class="overview-item" onclick="scrollToArticle('5')">
+        <span class="overview-item-tag">#5</span>
+        <span class="overview-item-text">
+          月之暗面完成 3 亿美元融资
+          <a href="#" class="overview-item-link" onclick="event.stopPropagation()">↗</a>
+        </span>
+      </div>
+    </div>
+    <div class="overview-category">
+      <div class="overview-category-header">
+        <span>🔬</span> 技术与洞察
+        <span class="overview-category-count">1</span>
+      </div>
+      <div class="overview-item" onclick="scrollToArticle('6')">
+        <span class="overview-item-tag">#6</span>
+        <span class="overview-item-text">
+          DeepMind：小模型测试时计算新范式
+          <a href="#" class="overview-item-link" onclick="event.stopPropagation()">↗</a>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="article-list">
+    <article class="article-item" id="article-1">
+      <div class="article-header">
+        <span class="article-number">#1</span>
+        <h2 class="article-title"><a href="#article-1">Kimi 发布 k1.5 推理模型</a></h2>
+      </div>
+      <div class="article-body">
+        <p>月之暗面今日正式发布 <strong>Kimi k1.5</strong> 推理模型，在数学、代码与逻辑推理任务上较前代有显著提升。该模型采用改进的 RL 训练流程，在 AIME 2024 数学竞赛题上达到 77% 的正确率，接近 OpenAI o1-preview 水平。</p>
+        <p>值得注意的是，k1.5 在代码生成任务上表现尤为突出，HumanEval 得分 89.2%，超过 Claude 3.5 Sonnet。模型支持 256K 上下文窗口，保持了 Kimi 系列在长文本处理上的优势。</p>
+      </div>
+      <div class="article-companies">
+        <span class="company-chip primary">月之暗面 primary</span>
+      </div>
+      <div class="related-links">
+        <div class="related-links-label">相关链接</div>
+        <div class="related-links-list">
+          <a href="#" class="related-link">kimi.moonshot.cn/blog/k1.5</a>
+          <a href="#" class="related-link">techcrunch.com/2026/07/21/kimi-k1.5</a>
+        </div>
+      </div>
+    </article>
+
+    <article class="article-item" id="article-2">
+      <div class="article-header">
+        <span class="article-number">#2</span>
+        <h2 class="article-title"><a href="#article-2">OpenAI GPT-5 预览版开放测试</a></h2>
+      </div>
+      <div class="article-body">
+        <p>OpenAI 开始向部分企业合作伙伴开放 <strong>GPT-5</strong> 预览版 API 访问。据早期测试者反馈，新模型在多步推理、代码理解与创意写作上都有明显进步，特别是在需要跨文档整合信息的任务上。</p>
+        <p>Sam Altman 在内部邮件中提到，GPT-5 的发布策略将延续"逐步释放"路线，先面向企业用户，再扩展到 Plus 订阅者。</p>
+      </div>
+      <div class="article-companies">
+        <span class="company-chip primary">OpenAI primary</span>
+      </div>
+      <div class="related-links">
+        <div class="related-links-label">相关链接</div>
+        <div class="related-links-list">
+          <a href="#" class="related-link">openai.com/blog/gpt-5-preview</a>
+          <a href="#" class="related-link">theinformation.com/openai-gpt5-testing</a>
+        </div>
+      </div>
+    </article>
+
+    <article class="article-item" id="article-3">
+      <div class="article-header">
+        <span class="article-number">#3</span>
+        <h2 class="article-title"><a href="#article-3">Mistral Small 3.1 发布</a></h2>
+      </div>
+      <div class="article-body">
+        <p>法国 AI 公司 Mistral 发布 <strong>Small 3.1</strong> 模型，定位"小而全"——在参数量仅为 22B 的情况下，多语言理解与代码能力达到 Llama 3 70B 级别。模型采用混合专家架构，实际激活参数约 8B。</p>
+        <p>Mistral 强调该模型针对边缘设备优化，可在单张 RTX 4090 上全速运行。开源协议保持 Apache 2.0，商用无限制。</p>
+      </div>
+      <div class="article-companies">
+        <span class="company-chip primary">Mistral primary</span>
+      </div>
+      <div class="related-links">
+        <div class="related-links-label">相关链接</div>
+        <div class="related-links-list">
+          <a href="#" class="related-link">mistral.ai/news/small-3.1</a>
+          <a href="#" class="related-link">huggingface.co/mistralai/Small-3.1</a>
+        </div>
+      </div>
+    </article>
+
+    <article class="article-item" id="article-4">
+      <div class="article-header">
+        <span class="article-number">#4</span>
+        <h2 class="article-title"><a href="#article-4">苹果 iOS 19 AI 升级曝光</a></h2>
+      </div>
+      <div class="article-body">
+        <p>苹果在内部测试中推进 <strong>iOS 19</strong> 的 AI 能力升级，重点重构 Siri 的底层架构。新 Siri 将支持更自然的多轮对话，并能跨 App 执行复杂任务链。</p>
+        <p>端侧模型参数据称提升至 7B，全部运行在 Apple Silicon 神经引擎上。部分功能将向后兼容至 iPhone 15 Pro 系列。</p>
+      </div>
+      <div class="article-companies">
+        <span class="company-chip primary">Apple primary</span>
+      </div>
+      <div class="related-links">
+        <div class="related-links-label">相关链接</div>
+        <div class="related-links-list">
+          <a href="#" class="related-link">9to5mac.com/ios19-siri-redesign</a>
+          <a href="#" class="related-link">bloomberg.com/apple-ios19-ai-features</a>
+        </div>
+      </div>
+    </article>
+
+    <article class="article-item" id="article-5">
+      <div class="article-header">
+        <span class="article-number">#5</span>
+        <h2 class="article-title"><a href="#article-5">月之暗面再获 3 亿美元融资</a></h2>
+      </div>
+      <div class="article-body">
+        <p><strong>月之暗面（Moonshot AI）</strong>完成新一轮 3 亿美元融资，投后估值超过 30 亿美元。本轮由红杉中国领投，老股东跟投。资金将主要用于扩大推理算力与训练下一代基座模型。</p>
+        <p>该公司自成立以来累计融资超过 13 亿美元，是中国大模型赛道估值最高的创业公司之一。</p>
+      </div>
+      <div class="article-companies">
+        <span class="company-chip primary">月之暗面 primary</span>
+        <span class="company-chip partner">红杉中国 subject</span>
+      </div>
+      <div class="related-links">
+        <div class="related-links-label">相关链接</div>
+        <div class="related-links-list">
+          <a href="#" class="related-link">36kr.com/p/2026-moonshot-funding</a>
+          <a href="#" class="related-link">crunchbase.com/moonshot-ai-series-d</a>
+        </div>
+      </div>
+    </article>
+
+    <article class="article-item" id="article-6">
+      <div class="article-header">
+        <span class="article-number">#6</span>
+        <h2 class="article-title"><a href="#article-6">小模型测试时计算新范式</a></h2>
+      </div>
+      <div class="article-body">
+        <p>谷歌 DeepMind 发表新论文，证明 <strong>小模型</strong> 在推理阶段增加计算量（test-time compute）可以达到与大模型相近的性能。研究团队使用 7B 参数模型，在数学竞赛题上追平 70B 模型。</p>
+        <p>这一发现对端侧 AI 部署意义重大：未来手机与边缘设备可能不需要超大模型，而是依靠"思考更久"的小模型获得高质量输出。</p>
+      </div>
+      <div class="article-companies">
+        <span class="company-chip primary">Google DeepMind primary</span>
+      </div>
+      <div class="related-links">
+        <div class="related-links-label">相关链接</div>
+        <div class="related-links-list">
+          <a href="#" class="related-link">arxiv.org/abs/2607.08474</a>
+          <a href="#" class="related-link">deepmind.google/discover/blog/test-time-compute</a>
+        </div>
+      </div>
+    </article>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+   VIEW: TIMELINE
+   ══════════════════════════════════════════ -->
+<div class="view" id="view-timeline">
+  <div class="timeline-header">
+    <h1 class="timeline-title">事件流</h1>
+    <p class="timeline-subtitle">按时间顺序浏览所有 AI 资讯，支持多维度筛选</p>
+  </div>
+
+  <div class="timeline-filters">
+    <div class="filter-group">
+      <label class="filter-label">公司</label>
+      <select class="filter-select" onchange="filterTimeline()">
+        <option value="">全部公司</option>
+        <option value="openai">OpenAI</option>
+        <option value="moonshot">月之暗面</option>
+        <option value="mistral">Mistral</option>
+        <option value="apple">Apple</option>
+        <option value="deepmind">Google DeepMind</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">分类</label>
+      <select class="filter-select" onchange="filterTimeline()">
+        <option value="">全部分类</option>
+        <option value="news">要闻</option>
+        <option value="model">模型发布</option>
+        <option value="product">产品应用</option>
+        <option value="industry">行业动态</option>
+        <option value="tech">技术与洞察</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">日期范围</label>
+      <select class="filter-select" onchange="filterTimeline()">
+        <option value="7">最近 7 天</option>
+        <option value="30">最近 30 天</option>
+        <option value="90">最近 90 天</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="timeline-day">
+    <div class="timeline-day-header">
+      <span class="timeline-day-date">7 月 21 日</span>
+      <div class="timeline-day-line"></div>
+      <span class="timeline-day-count">6 条</span>
+    </div>
+    <div class="timeline-cards">
+      <div class="timeline-card" onclick="navigate('/')">
+        <div class="timeline-card-header">
+          <span class="timeline-card-tag">#1</span>
+          <span class="timeline-card-category">要闻</span>
+        </div>
+        <div class="timeline-card-title">Kimi 发布 k1.5 推理模型，数学与代码能力大幅提升</div>
+        <div class="timeline-card-summary">月之暗面今日正式发布 Kimi k1.5 推理模型，在数学、代码与逻辑推理任务上较前代有显著提升...</div>
+        <div class="timeline-card-meta">
+          <span class="timeline-card-company">月之暗面</span>
+        </div>
+      </div>
+      <div class="timeline-card" onclick="navigate('/')">
+        <div class="timeline-card-header">
+          <span class="timeline-card-tag">#2</span>
+          <span class="timeline-card-category">要闻</span>
+        </div>
+        <div class="timeline-card-title">OpenAI GPT-5 预览版向部分企业用户开放测试</div>
+        <div class="timeline-card-summary">OpenAI 开始向部分企业合作伙伴开放 GPT-5 预览版 API 访问...</div>
+        <div class="timeline-card-meta">
+          <span class="timeline-card-company">OpenAI</span>
+        </div>
+      </div>
+      <div class="timeline-card" onclick="navigate('/')">
+        <div class="timeline-card-header">
+          <span class="timeline-card-tag">#3</span>
+          <span class="timeline-card-category">模型发布</span>
+        </div>
+        <div class="timeline-card-title">Mistral 推出 Small 3.1，多语言与代码能力均衡</div>
+        <div class="timeline-card-summary">法国 AI 公司 Mistral 发布 Small 3.1 模型，参数量仅 22B 但能力达到 Llama 3 70B 级别...</div>
+        <div class="timeline-card-meta">
+          <span class="timeline-card-company">Mistral</span>
+        </div>
+      </div>
+      <div class="timeline-card" onclick="navigate('/')">
+        <div class="timeline-card-header">
+          <span class="timeline-card-tag">#4</span>
+          <span class="timeline-card-category">产品应用</span>
+        </div>
+        <div class="timeline-card-title">苹果 iOS 19 集成更强端侧 AI，Siri 重构成重点</div>
+        <div class="timeline-card-summary">苹果在内部测试中推进 iOS 19 的 AI 能力升级，重点重构 Siri 的底层架构...</div>
+        <div class="timeline-card-meta">
+          <span class="timeline-card-company">Apple</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="timeline-day">
+    <div class="timeline-day-header">
+      <span class="timeline-day-date">7 月 20 日</span>
+      <div class="timeline-day-line"></div>
+      <span class="timeline-day-count">5 条</span>
+    </div>
+    <div class="timeline-cards">
+      <div class="timeline-card" onclick="navigate('/')">
+        <div class="timeline-card-header">
+          <span class="timeline-card-tag">#1</span>
+          <span class="timeline-card-category">技术与洞察</span>
+        </div>
+        <div class="timeline-card-title">Anthropic 发布 Claude 3.5 Opus，多项基准测试刷新记录</div>
+        <div class="timeline-card-summary">Anthropic 今日发布 Claude 3.5 Opus，在 MMLU、GPQA 等多项基准测试上刷新记录...</div>
+        <div class="timeline-card-meta">
+          <span class="timeline-card-company">Anthropic</span>
+        </div>
+      </div>
+      <div class="timeline-card" onclick="navigate('/')">
+        <div class="timeline-card-header">
+          <span class="timeline-card-tag">#2</span>
+          <span class="timeline-card-category">行业动态</span>
+        </div>
+        <div class="timeline-card-title">Meta 宣布 Llama 4 训练完成，400B 参数版本即将开源</div>
+        <div class="timeline-card-summary">Meta AI 负责人 Yann LeCun 宣布 Llama 4 系列训练完成，最大版本参数量达 400B...</div>
+        <div class="timeline-card-meta">
+          <span class="timeline-card-company">Meta</span>
+        </div>
+      </div>
+      <div class="timeline-card" onclick="navigate('/')">
+        <div class="timeline-card-header">
+          <span class="timeline-card-tag">#3</span>
+          <span class="timeline-card-category">产品应用</span>
+        </div>
+        <div class="timeline-card-title">Google 推出 Gemini 1.5 Pro Workspace 集成</div>
+        <div class="timeline-card-summary">Google Workspace 全面集成 Gemini 1.5 Pro，支持 Gmail、Docs、Sheets 智能助手...</div>
+        <div class="timeline-card-meta">
+          <span class="timeline-card-company">Google</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+   VIEW: COMPANY
+   ══════════════════════════════════════════ -->
+<div class="view" id="view-company">
+  <div class="company-header">
+    <h1 class="company-header-title">公司索引</h1>
+    <p class="company-header-subtitle">浏览 AI 领域重要公司与机构的动态档案</p>
+  </div>
+
+  <div class="company-search">
+    <input type="text" class="search-input" placeholder="搜索公司..." oninput="searchCompanies(this.value)">
+  </div>
+
+  <div class="company-grid" id="companyGrid">
+    <div class="company-card" onclick="showCompanyProfile('openai')">
+      <div class="company-card-header">
+        <div class="company-card-avatar">O</div>
+        <div>
+          <div class="company-card-name">OpenAI</div>
+          <div class="company-card-count">42 条动态</div>
+        </div>
+      </div>
+      <div class="company-card-desc">全球领先的 AI 研究机构，以 GPT 系列大语言模型闻名，致力于实现通用人工智能（AGI）。</div>
+    </div>
+    <div class="company-card" onclick="showCompanyProfile('moonshot')">
+      <div class="company-card-header">
+        <div class="company-card-avatar" style="background:var(--accent-soft);color:var(--accent);">月</div>
+        <div>
+          <div class="company-card-name">月之暗面</div>
+          <div class="company-card-count">28 条动态</div>
+        </div>
+      </div>
+      <div class="company-card-desc">中国大模型赛道领先创业公司，Kimi 智能助手开发商，累计融资超 13 亿美元。</div>
+    </div>
+    <div class="company-card" onclick="showCompanyProfile('mistral')">
+      <div class="company-card-header">
+        <div class="company-card-avatar">M</div>
+        <div>
+          <div class="company-card-name">Mistral</div>
+          <div class="company-card-count">15 条动态</div>
+        </div>
+      </div>
+      <div class="company-card-desc">法国开源 AI 公司，以高效的小参数模型著称，采用 MoE 架构，商用无限制。</div>
+    </div>
+    <div class="company-card" onclick="showCompanyProfile('anthropic')">
+      <div class="company-card-header">
+        <div class="company-card-avatar">A</div>
+        <div>
+          <div class="company-card-name">Anthropic</div>
+          <div class="company-card-count">35 条动态</div>
+        </div>
+      </div>
+      <div class="company-card-desc">OpenAI 前员工创立的 AI 安全公司，Claude 系列模型以安全性和长上下文著称。</div>
+    </div>
+    <div class="company-card" onclick="showCompanyProfile('deepmind')">
+      <div class="company-card-header">
+        <div class="company-card-avatar">G</div>
+        <div>
+          <div class="company-card-name">Google DeepMind</div>
+          <div class="company-card-count">56 条动态</div>
+        </div>
+      </div>
+      <div class="company-card-desc">Google 旗下 AI 研究部门，AlphaGo、AlphaFold、Gemini 等重要技术的开发者。</div>
+    </div>
+    <div class="company-card" onclick="showCompanyProfile('meta')">
+      <div class="company-card-header">
+        <div class="company-card-avatar">M</div>
+        <div>
+          <div class="company-card-name">Meta AI</div>
+          <div class="company-card-count">31 条动态</div>
+        </div>
+      </div>
+      <div class="company-card-desc">Meta 旗下 AI 研究团队，以 Llama 开源模型系列推动行业开放生态。</div>
+    </div>
+    <div class="company-card" onclick="showCompanyProfile('apple')">
+      <div class="company-card-header">
+        <div class="company-card-avatar">A</div>
+        <div>
+          <div class="company-card-name">Apple</div>
+          <div class="company-card-count">18 条动态</div>
+        </div>
+      </div>
+      <div class="company-card-desc">科技巨头，通过 Apple Intelligence 将端侧 AI 能力深度集成到 iOS 和 macOS。</div>
+    </div>
+    <div class="company-card" onclick="showCompanyProfile('microsoft')">
+      <div class="company-card-header">
+        <div class="company-card-avatar">M</div>
+        <div>
+          <div class="company-card-name">Microsoft</div>
+          <div class="company-card-count">24 条动态</div>
+        </div>
+      </div>
+      <div class="company-card-desc">OpenAI 最大投资方，通过 Copilot 将 AI 能力集成到 Windows 和 Office 全线产品。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+   VIEW: COMPANY PROFILE
+   ══════════════════════════════════════════ -->
+<div class="view" id="view-profile">
+  <div class="profile-header">
+    <div class="profile-header-inner">
+      <div class="profile-avatar" id="profileAvatar">O</div>
+      <div class="profile-header-content">
+        <div class="profile-name" id="profileName">OpenAI</div>
+        <div class="profile-desc" id="profileDesc">全球领先的 AI 研究机构，以 GPT 系列大语言模型闻名，致力于实现通用人工智能（AGI）。</div>
+        <div class="profile-stats">
+          <div class="profile-stat">
+            <span class="profile-stat-value" id="profileCount">42</span>
+            <span class="profile-stat-label">动态</span>
+          </div>
+          <div class="profile-stat">
+            <span class="profile-stat-value">2022</span>
+            <span class="profile-stat-label">首次收录</span>
+          </div>
+          <div class="profile-stat">
+            <span class="profile-stat-value">7</span>
+            <span class="profile-stat-label">关联公司</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="profile-section-title">最新动态</div>
+  <div class="profile-timeline" id="profileTimeline">
+    <div class="profile-timeline-item">
+      <div class="profile-timeline-dot"></div>
+      <div>
+        <div class="profile-timeline-date">2026-07-21</div>
+        <div class="profile-timeline-title">GPT-5 预览版向部分企业用户开放测试</div>
+        <div class="profile-timeline-summary">OpenAI 开始向部分企业合作伙伴开放 GPT-5 预览版 API 访问。据早期测试者反馈，新模型在多步推理、代码理解与创意写作上都有明显进步。</div>
+      </div>
+    </div>
+    <div class="profile-timeline-item">
+      <div class="profile-timeline-dot"></div>
+      <div>
+        <div class="profile-timeline-date">2026-07-18</div>
+        <div class="profile-timeline-title">OpenAI 宣布与多家媒体达成内容授权协议</div>
+        <div class="profile-timeline-summary">OpenAI 与 Vox Media、The Atlantic 等多家主流媒体达成内容授权协议，用于训练和改进其 AI 模型。</div>
+      </div>
+    </div>
+    <div class="profile-timeline-item">
+      <div class="profile-timeline-dot"></div>
+      <div>
+        <div class="profile-timeline-date">2026-07-15</div>
+        <div class="profile-timeline-title">GPT-4o 语音模式向所有用户开放</div>
+        <div class="profile-timeline-summary">OpenAI 宣布 GPT-4o 的高级语音模式不再限制 Plus 订阅用户，免费用户也可体验自然对话能力。</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 2rem;">
+    <button class="hero-nav-btn" onclick="navigate('/company')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      返回公司索引
+    </button>
+  </div>
+</div>
+
+</main>
+
+<footer class="site-footer">
+  <p>
+    内容来源：<a href="https://daily.juya.uk" target="_blank">橘鸦 AI 日报</a>
+    · AI 辅助整理，内容仅供参考
+  </p>
+</footer>
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="回到顶部">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="18 15 12 9 6 15"/>
+  </svg>
+</button>
+
+<!-- Theme Panel -->
+<div class="theme-panel-overlay" id="themePanelOverlay" onclick="toggleThemePanel()">
+  <div class="theme-panel" onclick="event.stopPropagation()">
+    <div class="theme-panel-header">选择主题</div>
+    <div class="theme-options">
+      <button class="theme-option active" data-theme="editorial" onclick="setTheme('editorial')">
+        <div class="theme-swatch" style="background: #c44b2b;"></div>
+        <div class="theme-info">
+          <div class="theme-name">经典</div>
+          <div class="theme-name-en">Editorial</div>
+        </div>
+        <div class="theme-check">✓</div>
+      </button>
+      <button class="theme-option" data-theme="mono" onclick="setTheme('mono')">
+        <div class="theme-swatch" style="background: #111111;"></div>
+        <div class="theme-info">
+          <div class="theme-name">极简</div>
+          <div class="theme-name-en">Mono</div>
+        </div>
+        <div class="theme-check">✓</div>
+      </button>
+      <button class="theme-option" data-theme="dune" onclick="setTheme('dune')">
+        <div class="theme-swatch" style="background: #c07a28;"></div>
+        <div class="theme-info">
+          <div class="theme-name">沙丘</div>
+          <div class="theme-name-en">Dune</div>
+        </div>
+        <div class="theme-check">✓</div>
+      </button>
+      <button class="theme-option" data-theme="blueprint" onclick="setTheme('blueprint')">
+        <div class="theme-swatch" style="background: #2563eb;"></div>
+        <div class="theme-info">
+          <div class="theme-name">蓝图</div>
+          <div class="theme-name-en">Blueprint</div>
+        </div>
+        <div class="theme-check">✓</div>
+      </button>
+      <button class="theme-option" data-theme="ink" onclick="setTheme('ink')">
+        <div class="theme-swatch" style="background: #e8653f;"></div>
+        <div class="theme-info">
+          <div class="theme-name">墨夜</div>
+          <div class="theme-name-en">Ink</div>
+        </div>
+        <div class="theme-check">✓</div>
+      </button>
+      <button class="theme-option" data-theme="cyber" onclick="setTheme('cyber')">
+        <div class="theme-swatch" style="background: #00e5ff;"></div>
+        <div class="theme-info">
+          <div class="theme-name">霓虹</div>
+          <div class="theme-name-en">Cyber</div>
+        </div>
+        <div class="theme-check">✓</div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const themes = ['editorial','mono','dune','blueprint','ink','cyber'];
+  let currentTheme = localStorage.getItem('juya-theme') || 'editorial';
+  document.body.setAttribute('data-theme', currentTheme);
+  updateThemeUI();
+
+  function setTheme(theme) {
+    currentTheme = theme;
+    document.body.setAttribute('data-theme', theme);
+    localStorage.setItem('juya-theme', theme);
+    updateThemeUI();
+  }
+  function updateThemeUI() {
+    document.querySelectorAll('.theme-option').forEach(btn => {
+      const isActive = btn.dataset.theme === currentTheme;
+      btn.classList.toggle('active', isActive);
+    });
+  }
+  function toggleThemePanel() {
+    document.getElementById('themePanelOverlay').classList.toggle('active');
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      document.getElementById('themePanelOverlay').classList.remove('active');
+    }
+  });
+
+  // Router
+  const views = {
+    '/': 'daily',
+    '/timeline': 'timeline',
+    '/company': 'company',
+    '/profile': 'profile'
+  };
+
+  function navigate(path) {
+    window.location.hash = '#' + path;
+    handleRoute();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function handleRoute() {
+    const hash = window.location.hash.slice(1) || '/';
+    const viewName = views[hash] || views['/'];
+
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + viewName)?.classList.add('active');
+
+    document.querySelectorAll('.nav-link').forEach(l => {
+      l.classList.toggle('active', l.dataset.view === viewName);
+    });
+
+    // Reset scroll progress for non-daily views
+    if (viewName !== 'daily') {
+      document.getElementById('readingProgress').style.transform = 'scaleX(0)';
+    }
+  }
+
+  window.addEventListener('hashchange', handleRoute);
+  handleRoute();
+
+  // Scroll progress & back-to-top
+  const progressEl = document.getElementById('readingProgress');
+  const backToTop = document.getElementById('backToTop');
+
+  window.addEventListener('scroll', () => {
+    const scrollTop = window.scrollY;
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const progress = docHeight > 0 ? scrollTop / docHeight : 0;
+    progressEl.style.transform = 'scaleX(' + progress + ')';
+    backToTop.classList.toggle('visible', scrollTop > 400);
+  }, { passive: true });
+
+  function scrollToArticle(tag) {
+    const el = document.getElementById('article-' + tag);
+    if (el) {
+      const offset = el.getBoundingClientRect().top + window.scrollY - 80;
+      window.scrollTo({ top: offset, behavior: 'smooth' });
+    }
+  }
+
+  function filterTimeline() {
+    // Demo: show toast
+    console.log('Filter changed');
+  }
+
+  function searchCompanies(query) {
+    const cards = document.querySelectorAll('.company-card');
+    const lower = query.toLowerCase();
+    cards.forEach(card => {
+      const name = card.querySelector('.company-card-name').textContent.toLowerCase();
+      const desc = card.querySelector('.company-card-desc').textContent.toLowerCase();
+      card.style.display = (name.includes(lower) || desc.includes(lower)) ? '' : 'none';
+    });
+  }
+
+  const companyData = {
+    openai: { name: 'OpenAI', desc: '全球领先的 AI 研究机构，以 GPT 系列大语言模型闻名，致力于实现通用人工智能（AGI）。', count: 42, initial: 'O' },
+    moonshot: { name: '月之暗面', desc: '中国大模型赛道领先创业公司，Kimi 智能助手开发商，累计融资超 13 亿美元。', count: 28, initial: '月' },
+    mistral: { name: 'Mistral', desc: '法国开源 AI 公司，以高效的小参数模型著称，采用 MoE 架构，商用无限制。', count: 15, initial: 'M' },
+    anthropic: { name: 'Anthropic', desc: 'OpenAI 前员工创立的 AI 安全公司，Claude 系列模型以安全性和长上下文著称。', count: 35, initial: 'A' },
+    deepmind: { name: 'Google DeepMind', desc: 'Google 旗下 AI 研究部门，AlphaGo、AlphaFold、Gemini 等重要技术的开发者。', count: 56, initial: 'G' },
+    meta: { name: 'Meta AI', desc: 'Meta 旗下 AI 研究团队，以 Llama 开源模型系列推动行业开放生态。', count: 31, initial: 'M' },
+    apple: { name: 'Apple', desc: '科技巨头，通过 Apple Intelligence 将端侧 AI 能力深度集成到 iOS 和 macOS。', count: 18, initial: 'A' },
+    microsoft: { name: 'Microsoft', desc: 'OpenAI 最大投资方，通过 Copilot 将 AI 能力集成到 Windows 和 Office 全线产品。', count: 24, initial: 'M' }
+  };
+
+  function showCompanyProfile(id) {
+    const data = companyData[id];
+    if (!data) return;
+    document.getElementById('profileName').textContent = data.name;
+    document.getElementById('profileDesc').textContent = data.desc;
+    document.getElementById('profileCount').textContent = data.count;
+    document.getElementById('profileAvatar').textContent = data.initial;
+    navigate('/profile');
+  }
+</script>
+
+</body>
+</html>
