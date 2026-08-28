@@ -9,7 +9,9 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "gen:registry": "tsx scripts/gen-registry.ts",
+    "backfill": "tsx scripts/backfill.ts"
   },
   "keywords": [],
   "author": "",
@@ -31,7 +33,10 @@
     "eslint-config-next": "^16.3.3",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.1",
+    "tsx": "^4.23.12",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "wrangler": "^4.127.1",
+    "yaml": "^2.9.0"
   }
 }

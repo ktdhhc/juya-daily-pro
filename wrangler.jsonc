@@ -4,7 +4,8 @@
   "main": "worker/sync/index.ts",
   "compatibility_date": "2026-07-01",
   "triggers": {
-    "crons": ["0,30 0,1,2 * * *"]
+    // 部署日启用（ADR-0013）：["0,30 0,1,2 * * *"]
+    "crons": []
   },
   "vars": {
     "ARCHIVE_URL": "https://daily.juya.uk/archive/",
@@ -30,5 +31,7 @@
       "bucket_name": "juya-daily-archive"
     }
   ],
-  "secrets": ["LLM_API_KEY"]
+  "secrets": {
+    "required": ["LLM_API_KEY"]
+  }
 }

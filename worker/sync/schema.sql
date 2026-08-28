@@ -24,6 +24,12 @@ CREATE INDEX IF NOT EXISTS idx_items_enrich   ON items(enrich_state) WHERE enric
 -- /stream 列表 cursor 排序专用
 CREATE INDEX IF NOT EXISTS idx_items_stream_cursor ON items(date DESC, sequence_int ASC);
 
+-- ─── sources（原文归档，替代 R2——ADR-0013）────────
+CREATE TABLE IF NOT EXISTS sources (
+  date     TEXT PRIMARY KEY,          -- YYYY-MM-DD
+  markdown TEXT NOT NULL              -- 当期原文 markdown
+);
+
 -- ─── companies（Company Registry 镜像，源=data/companies.yaml）────────
 CREATE TABLE IF NOT EXISTS companies (
   id        TEXT PRIMARY KEY,                -- slug
