@@ -1,4 +1,4 @@
-// gen-registry — data/companies.yaml（真相源，ADR-0001）→ worker/registry.generated.ts 编译器（spec02 3.2）。
+// gen-registry — data/companies.yaml（真相源，ADR-0001）→ src/lib/registry.generated.ts 编译器（spec02 3.2；spec04 A2 迁移到 src/lib 供前端 generateStaticParams 复用）。
 // 流程：读 yaml → validateRegistry 纯校验（问题逐条列出，非 0 退出）→ 生成类型化 REGISTRY。
 // validateRegistry 为纯函数（无 fs/process），供 scripts/gen-registry.test.ts 直接测试（ADR-0011）。
 import { readFileSync, writeFileSync } from "node:fs";
@@ -83,7 +83,7 @@ function renderRegistry(companies: Company[]): string {
   const body = JSON.stringify(companies, null, 2);
   return (
     "// 由 `npm run gen:registry` 从 data/companies.yaml 生成（spec02 3.2，真相源 ADR-0001）。勿手改。\n" +
-    'import type { Company } from "../src/lib/schema";\n' +
+    'import type { Company } from "./schema";\n' +
     "\n" +
     `export const REGISTRY: Company[] = ${body};\n`
   );
@@ -105,9 +105,9 @@ function main(): void {
   }
 
   const companies = doc.companies as Company[];
-  const outPath = new URL("../worker/registry.generated.ts", import.meta.url);
+  const outPath = new URL("../src/lib/registry.generated.ts", import.meta.url);
   writeFileSync(outPath, renderRegistry(companies), "utf8");
-  console.log(`gen-registry: worker/registry.generated.ts 已生成（${companies.length} 家公司）`);
+  console.log(`gen-registry: src/lib/registry.generated.ts 已生成（${companies.length} 家公司）`);
 }
 
 // 直接运行（npm run gen:registry / tsx）时执行；被 vitest import 时不触发副作用。

@@ -10,7 +10,7 @@ import { parseArchiveDates } from "../worker/sync/archive";
 import { parseIssue } from "../worker/sync/parse";
 import { companiesUpsertSql, itemsUpsertSql, sourcesUpsertSql } from "../worker/sync/sqlgen";
 import { parseWranglerJson, runWrangler } from "./lib/wrangler-cli";
-import { REGISTRY } from "../worker/registry.generated";
+import { REGISTRY } from "../src/lib/registry.generated";
 
 // ---------- 常量 / 环境 ----------
 

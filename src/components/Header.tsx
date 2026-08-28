@@ -1,21 +1,35 @@
 "use client";
 
 import { useEffect, useState, RefObject } from "react";
+import Link from "next/link";
 import { ThemeToggle } from "./ThemeToggle";
+
+export type HeaderActive = "daily" | "stream" | "company";
 
 interface Props {
   mainRef?: RefObject<HTMLElement | null>;
-  currentDate: string;
-  onCalendarToggle: () => void;
+  currentDate?: string;
+  /** 刊号：第 N 期（由 DailyPage 按日期在归档中的位置推算） */
+  issueNo?: number | null;
+  onCalendarToggle?: () => void;
   hasEntries?: boolean;
+  active?: HeaderActive;
 }
 
-export function Header({ mainRef, currentDate, onCalendarToggle, hasEntries }: Props) {
+const NAV_ITEMS: { key: HeaderActive; label: string; href: string }[] = [
+  { key: "daily", label: "日报", href: "/" },
+  { key: "stream", label: "事件流", href: "/stream" },
+  { key: "company", label: "公司", href: "/company" },
+];
+
+/** 全站共用报头（FRONTEND_DESIGN §4.1）。
+ *  阅读页专属控件（进度条 / 复制链接 / 外链 / 日历入口 / 刊号）仅在 active="daily" 时出现。 */
+export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEntries, active }: Props) {
   const [progress, setProgress] = useState(0);
   const [copied, setCopied] = useState(false);
+  const isDaily = active === "daily" || active === undefined;
 
-  const copyLink = async () => {
-    try {
+  const copyLink = async () => {    try {
       await navigator.clipboard.writeText(window.location.href);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
@@ -34,63 +48,84 @@ export function Header({ mainRef, currentDate, onCalendarToggle, hasEntries }: P
     return () => container.removeEventListener("scroll", onScroll);
   }, [mainRef]);
 
-  const hasDate = currentDate && currentDate.length > 0;
-  const d = hasDate ? new Date(currentDate + "T00:00:00") : null;
-
   return (
     <header className="site-header sticky top-0 z-50 shrink-0">
       <div className="px-5 h-12 flex items-center">
-        <a href="/juya-daily" className="flex items-center gap-2 no-underline">
-          <span className="site-brand text-base font-bold tracking-tight">
-            橘鸦 AI 日报
+        {/* 品牌：方印 + 站名 */}
+        <Link href="/" className="flex items-center gap-2.5 no-underline shrink-0 mr-8">
+          <span className="seal" style={{ width: 26, height: 26, fontSize: 15 }} aria-hidden>
+            橘
           </span>
-        </a>
-        <div className="flex items-center gap-2 ml-auto">
-          {hasEntries && (
-            <button
-              onClick={onCalendarToggle}
-              className="calendar-btn flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:opacity-80 active:scale-95"
-              style={{ background: "var(--tag-bg)", color: "var(--fg)" }}
+          <span className="site-brand text-base font-bold tracking-tight">橘鸦 AI 日报</span>
+        </Link>
+
+        {/* Nav 三联：宽字距，激活 3px 墨线，hover 自左展开 */}
+        <nav className="h-12 hidden sm:flex items-center" aria-label="主导航">
+          {NAV_ITEMS.map((n) => (
+            <Link
+              key={n.key}
+              href={n.href}
+              className={`nav-link${active === n.key ? " active" : ""}`}
+              aria-current={active === n.key ? "page" : undefined}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {n.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="flex items-center gap-1 ml-auto">
+          {isDaily && issueNo != null && currentDate && (
+            <span
+              className="mr-2 text-xs whitespace-nowrap"
+              style={{ color: "var(--fg-muted)", fontVariantNumeric: "tabular-nums" }}
+            >
+              第 {issueNo} 期 · {currentDate}
+            </span>
+          )}
+          {isDaily && hasEntries && (
+            <button onClick={onCalendarToggle} className="icon-btn" aria-label="打开合订本目录" title="合订本目录">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="4" width="18" height="18" rx="2" />
                 <line x1="16" y1="2" x2="16" y2="6" />
                 <line x1="8" y1="2" x2="8" y2="6" />
                 <line x1="3" y1="10" x2="21" y2="10" />
               </svg>
-              {d && <span>{d.getMonth() + 1}/{d.getDate()}</span>}
             </button>
           )}
-          {hasEntries && (
+          {isDaily && hasEntries && (
             <button
               onClick={copyLink}
-              className="calendar-btn flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:opacity-80 active:scale-95"
-              style={{ background: "var(--tag-bg)", color: copied ? "var(--accent)" : "var(--fg)" }}
+              className="icon-btn"
+              style={copied ? { color: "var(--accent)" } : undefined}
               title="复制本期链接"
+              aria-label="复制本期链接"
             >
               {copied ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
               ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
               )}
-              <span>{copied ? "已复制" : "链接"}</span>
             </button>
           )}
-          <a
-            href="https://daily.juya.uk"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="site-github-link hover:opacity-70 flex items-center justify-center w-8 h-8"
-            aria-label="橘鸦 AI 日报官网"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-            </svg>
-          </a>
+          {isDaily && (
+            <a
+              href="https://daily.juya.uk"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="icon-btn"
+              aria-label="橘鸦 AI 日报官网"
+              title="官网"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 17L17 7" />
+                <path d="M8 7h9v9" />
+              </svg>
+            </a>
+          )}
           <ThemeToggle />
         </div>
       </div>
-      <div className="reading-progress" style={{ transform: `scaleX(${progress})` }} />
+      {isDaily && <div className="reading-progress" style={{ transform: `scaleX(${progress})` }} />}
     </header>
   );
 }

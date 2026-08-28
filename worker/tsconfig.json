@@ -1,0 +1,25 @@
+{
+  // worker 独立 tsconfig（spec04 A1）：@cloudflare/workers-types 与前端 DOM lib 冲突，故与 root tsconfig 分离。
+  // 排除 *.test.ts：worker 测试跑在 Node/vitest（ADR-0011），node:fs/import.meta.url 与 workers-types
+  // 的全局 URL 声明互斥（同程序 TS2307/TS2322 实证），故测试不进本 tsc 程序（vitest 直接跑，见票 A1 注）。
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": ["@cloudflare/workers-types"],
+    "strict": true,
+    "noEmit": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true
+  },
+  "include": [
+    "./**/*.ts",
+    "../src/lib/juya.ts",
+    "../src/lib/schema.ts",
+    "../src/lib/registry.generated.ts"
+  ],
+  "exclude": ["./**/*.test.ts"]
+}

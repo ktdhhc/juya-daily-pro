@@ -14,42 +14,44 @@ interface Props {
   error?: string;
 }
 
+/** 骨架：.galley 结构同构块 + 定制墨迹扫过 + 竖排「排版中 …」（FRONTEND_DESIGN §4.5，替代 animate-pulse） */
 function ArticleSkeleton() {
   return (
-    <div className="max-w-3xl mx-auto px-5 py-8 md:py-12">
-      <div className="animate-pulse">
-        {/* Date line */}
-        <div className="flex items-center gap-3 mb-3">
-          <div className="h-3 w-24 rounded" style={{ background: "var(--border)" }} />
-          <div className="h-px flex-1" style={{ background: "var(--border)" }} />
-          <div className="h-3 w-12 rounded" style={{ background: "var(--border)" }} />
-        </div>
-        {/* Title */}
-        <div className="h-10 w-20 rounded mb-2" style={{ background: "var(--border)" }} />
-        <div className="h-4 w-48 rounded mb-8" style={{ background: "var(--border)" }} />
-        {/* Overview card */}
-        <div className="rounded-lg p-5 mb-8" style={{ background: "var(--tag-bg)" }}>
-          <div className="h-3 w-16 rounded mb-4" style={{ background: "var(--border)" }} />
-          <div className="space-y-2">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-3 rounded" style={{ background: "var(--border)", width: `${85 - i * 8}%` }} />
-            ))}
-          </div>
-        </div>
-        {/* Content blocks */}
-        <div className="space-y-4">
-          {[...Array(4)].map((_, i) => (
-            <div key={i}>
-              <div className="h-5 w-3/4 rounded mb-3" style={{ background: "var(--border)" }} />
-              <div className="space-y-2">
-                <div className="h-3 w-full rounded" style={{ background: "var(--border)" }} />
-                <div className="h-3 w-full rounded" style={{ background: "var(--border)" }} />
-                <div className="h-3 w-2/3 rounded" style={{ background: "var(--border)" }} />
-              </div>
-            </div>
+    <div className="max-w-3xl mx-auto px-5 py-8 md:py-12 relative" aria-busy="true">
+      {/* Date line */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="galley h-3 w-24" />
+        <div className="h-px flex-1" style={{ background: "var(--rule)" }} />
+        <div className="galley h-3 w-12" />
+      </div>
+      {/* Title */}
+      <div className="galley h-10 w-56 mb-2.5" />
+      <div className="galley h-4 w-40 mb-8" />
+      {/* Overview block */}
+      <div className="p-5 mb-8" style={{ borderRadius: "var(--radius-content)", background: "var(--tag-bg)" }}>
+        <div className="galley h-3 w-16 mb-4" />
+        <div className="space-y-2.5">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="galley h-3" style={{ width: `${85 - i * 8}%` }} />
           ))}
         </div>
       </div>
+      {/* Content blocks */}
+      <div className="space-y-8">
+        {[...Array(4)].map((_, i) => (
+          <div key={i}>
+            <div className="galley h-5 w-3/4 mb-3" />
+            <div className="space-y-2">
+              <div className="galley h-3 w-full" />
+              <div className="galley h-3 w-full" />
+              <div className="galley h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <span className="v-label absolute left-5 bottom-6" aria-hidden>
+        排版中 …
+      </span>
     </div>
   );
 }
@@ -119,6 +121,9 @@ export function DailyPage({
   }, [entries, issueId, handleSelect]);
 
   const contentLoading = !data || loading;
+  // 刊号：当前期在归档中的位置（entries 按日期降序，第 1 期 = 最新）
+  const currentIdx = entries.findIndex((e) => e.date === currentDate);
+  const issueNo = currentIdx >= 0 ? entries.length - currentIdx : null;
 
   return (
     <div
@@ -128,7 +133,9 @@ export function DailyPage({
       {/* Header always visible immediately */}
       <Header
         mainRef={mainRef}
+        active="daily"
         currentDate={currentDate || ""}
+        issueNo={issueNo}
         onCalendarToggle={() => setCalendarOpen((v) => !v)}
         hasEntries={entries.length > 0}
       />

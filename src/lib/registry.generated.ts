@@ -1,5 +1,5 @@
 // 由 `npm run gen:registry` 从 data/companies.yaml 生成（spec02 3.2，真相源 ADR-0001）。勿手改。
-import type { Company } from "../src/lib/schema";
+import type { Company } from "./schema";
 
 export const REGISTRY: Company[] = [
   {

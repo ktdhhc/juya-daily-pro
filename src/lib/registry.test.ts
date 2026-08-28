@@ -7,7 +7,7 @@ const RE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const RE_HEX = /^#[0-9a-fA-F]{6}$/;
 const STATUSES = ["active", "dormant", "retired"];
 
-describe("REGISTRY（worker/registry.generated.ts）", () => {
+describe("REGISTRY（src/lib/registry.generated.ts）", () => {
   it("条目数 ≥ 25", () => {
     expect(REGISTRY.length).toBeGreaterThanOrEqual(25);
   });
