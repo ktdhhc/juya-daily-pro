@@ -1,5 +1,7 @@
 # 本地开发与部署拓扑：Next dev + wrangler dev 双进程，生产 Pages + 独立 Worker
 
+> **修订 2026-08-28（ADR-0013）**：v1 本地开发全程 wrangler 默认本地模拟（零 Cloudflare 登录），`--remote` 仅部署日联调；生产部署（Pages + 独立 Worker + cron）整体后移到部署日。双进程 + rewrites 代理的本地拓扑不变。
+
 ## Context
 
 项目同时存在 Next.js 静态导出前端与 Cloudflare Worker 后端，本地开发如何同时跑两个进程，生产如何部署，需要明确边界避免 CORS 与部署单元混乱。

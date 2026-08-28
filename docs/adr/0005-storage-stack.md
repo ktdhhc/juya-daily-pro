@@ -1,5 +1,7 @@
 # 存储栈：D1 主存 + R2 原文归档 + 二期 Vectorize 语义索引
 
+> **修订 2026-08-28（ADR-0013 / 0014）**：R2 原文归档改为 D1 `sources` 表（六表、单引擎）；写入侧 cron 改为 v1 手动 `npm run sync`（部署日恢复 cron）；二期 Vectorize 随 RAG 整体裁剪。"D1 主存"决策不变。
+
 ## Context
 
 本项目长期目标包含 AI 资讯问答 agent 与 RAG，且要部署在 Cloudflare 上供多用户查阅。选取存储栈需要同时支持：

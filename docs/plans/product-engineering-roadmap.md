@@ -2,31 +2,29 @@
 
 ## 1. 背景
 
-`docs/prd/PRD.md` 与 11 枚 ADR 已锁定 MVP 范围与架构取舍，`docs/plans/mvp-build-phases.md` 已把 MVP 内部的 0-5 阶段铺开。但项目长期目标还包含 RAG、AI 问答、多用户产品化等迭代，这些不在 MVP 里，又需要在工程侧预留 hooks、避免后期大改。本文站在产品宏观视角，规划从 MVP 到后续迭代的 phase 划分、各 phase 出口标准、依赖的 ADR / 子计划、reso 人月。
+`docs/prd/PRD.md` 与 14 枚 ADR 已锁定 MVP 范围与架构取舍（2026-08-28 经 ADR-0013 / 0014 做 v1 本地优先裁剪：D1 单存储、手动同步、部署后移、单段归属、砍 RAG），`docs/plans/mvp-build-phases.md` 已把 MVP 内部的 0-5 阶段 + 可选部署日铺开。本文站在产品宏观视角，规划从 MVP 到后续迭代的 phase 划分、各 phase 出口标准、依赖的 ADR / 子计划。
 
-本文与 `mvp-build-phases.md` 的关系：mvp-build-phases 描述 Phase 1 内部的 6 个子阶段，本文描述更高一级的产品 phase。
+本文与 `mvp-build-phases.md` 的关系：mvp-build-phases 描述 Phase 1 内部的子阶段，本文描述更高一级的产品 phase。
 
 ## 2. 总览 phase
 
 ```text
 Phase 0  立基          [已完成]      docs 体系 + 基础 schema/wrangler/next.config 已就位
-Phase 1  MVP           [进行中]      四视图 + cron 自动同步 + D1/R2，详见 mvp-build-phases.md
-Phase 2  检索 + 智能化  [未启动]      全文检索 + LLM 话题聚类 + 公司简介 LLM 自动生成
-Phase 3  RAG 问答      [未启动]      Vectorize 索引 + /ask 视图 + cite sources
-Phase 4  产品化        [未启动]      多用户、监控、备份与运维、性能优化
+Phase 1  MVP           [进行中]      四视图 + 本地手动同步 + D1 六表；可选部署日，详见 mvp-build-phases.md
+Phase 2  检索          [未启动]      全文检索（D1 FTS5 或客户端 flexsearch）+ 公司活动热度图（可选）
+Phase 3  RAG 问答      [已裁剪]      ADR-0014；语义检索需求由 Phase 2 全文检索承接，重启需新 ADR
+Phase 4  产品化        [未启动]      部署日之后的监控、备份、多用户防护、性能优化
 ```
 
 ## 3. Phase 0 · 立基（已完成）
 
 ### 目标
-- 决策固化：术语、PRD、11 枚 ADR。
+- 决策固化：术语、PRD、ADR。
 - 基础设施就位：`wrangler.jsonc` / `.dev.vars` / `next.config.ts` rewrites / `src/lib/schema.ts` / `src/lib/matchCompanies.ts` / `worker/sync/schema.sql` / `data/companies.yaml`。
-- 文档体系分层：AGENTS.md / CONTEXT.md / docs/CURRENT_STATE.md / docs/FRONTEND_DESIGN.md (stub) / docs/plans/ / docs/adr/ / docs/prd/PRD.md。
+- 文档体系分层：AGENTS.md / CLAUDE.md / CONTEXT.md / docs/CURRENT_STATE.md / docs/FRONTEND_DESIGN.md (stub) / docs/plans/ / docs/adr/ / docs/prd/PRD.md。
 
 ### 出口标准（已满足）
-- prebuild-docs skill `validate_doc_set` 通过。
-- git 分支 `plus` 已建并完成首条 commit。
-- 11 枚 ADR 全部落地、互引用一致。
+- git 分支已建并完成首条 commit；全部 ADR 落地、互引用一致。
 
 ### 非目标
 - 任何可运行功能（不是 MVP，仅做地基）。
@@ -34,106 +32,79 @@ Phase 4  产品化        [未启动]      多用户、监控、备份与运维�
 ## 4. Phase 1 · MVP（进行中）
 
 ### 目标
-让"按事件流 + 公司"重新整理的查阅站点上线可访问，自动同步 daily.juya.uk 每日新期。
+让"按事件流 + 公司"重新整理的查阅工具**本地可用**，`npm run sync` 手动增量同步 daily.juya.uk 每日新期；部署为可选收尾（阶段 6 部署日）。
 
 ### 包含
-- 4 路由（`/`、`/stream`、`/company`、`/company/[id]`）+ 顶部 Nav 三联 + 共用 Header
-- Cloudflare Worker cron trigger（北京 08-11 半点，6 次/天）
-- D1 五表 + R2 原文归档 + read API 5 端点
-- Company Registry 30 家种子 + LLM 限多家归属单分类
+- 4 路由（`/`、`/stream`、`/company`、`/company/[id]`）+ 顶部 Nav 三联 + 共用 Header（首页 v1 维持直连 daily.juya.uk）
+- D1 六表（含 `sources` 原文表，替代 R2）+ read API 5 端点
+- 共享 sync 模块：本地 `npm run sync` 手动增量；Worker `scheduled` 入口预留（部署日启用 cron）
+- Company Registry 31 家种子 + 确定性白名单匹配（单段、无 LLM，ADR-0014）
 - 4 个空态 UI
-- Vitest 覆盖纯函数（parseMarkdown / matchCompanies / 启发式 role 补全）
+- Vitest 覆盖纯函数（parseMarkdown / matchCompanies）
 
 ### 详细子阶段
-完全由 `docs/plans/mvp-build-phases.md` 接管：阶段 0 清债、阶段 1 解析器、阶段 2 D1 回填、阶段 3 enrich、阶段 4 read API + 三视图、阶段 5 cron。本文不重复。
+完全由 `docs/plans/mvp-build-phases.md` 接管：阶段 0 清债、阶段 1 解析器、阶段 2 本地 D1 回填、阶段 3 确定性匹配、阶段 4 read API + 三视图、阶段 5 手动同步、阶段 6（可选）部署日。本文不重复。
 
 ### 出口标准
-- 公网 Cloudflare Pages 域名可访问，四视图切换顺畅。
-- 当日新期最坏滞后 30 分钟内出现在所有视图。
-- 抽样企业（Anthropic / OpenAI / Anthropic 关联公司）的档案头五块字段齐全。
-- Vitest 全绿、typecheck 全绿、CI 部署链路通。
+- 本地 `npm run dev` + `wrangler dev` 双进程下四视图切换顺畅。
+- `npm run sync` 幂等增量同步跑通，`sync_log` 可查。
+- 抽样企业（Anthropic / OpenAI 及其关联公司）的档案头五块字段齐全。
+- Vitest 全绿、typecheck 全绿。
+- （执行部署日后追加：公网域名可访问、cron 自动落新期、抽样多家 Item 的 role 回填正确。）
 
 ### 非目标
-- 全文检索 / 语义检索 / RAG（Phase 2-3）
-- 跨日话题聚类 / 公司简介自动生成（Phase 2）
+- 全文检索 / 语义检索（Phase 2）
+- 话题聚类 / 公司简介自动生成（已裁剪，ADR-0014）
 - 多用户 / 监控 / 备份（Phase 4）
-- AI 问答页（Phase 3）
+- cron 自动同步、R2、Pages 部署（阶段 6 部署日，可选）
 
 ### 依赖的 ADR
-ADR-0001 至 ADR-0011 全部。
+ADR-0001 至 ADR-0014 全部。
 
-## 5. Phase 2 · 检索 + 智能化（未启动）
+## 5. Phase 2 · 检索（未启动）
 
 ### 目标
-让"按公司捋清信息"从被动浏览升级为主动查询，让长尾公司画像自动浮现。
+让"跨期找事件"从滚动浏览升级为主动查询。
 
 ### 包含
-- **全文检索**：flexsearch 客户端索引 `title + summary + bodyMd`，顶部搜索框、命中高亮、跨期定位。零后端。
-- **LLM 话题聚类**：把"Kimi IPO 传闻"这种跨日报道聚成一条时间线带子事件。LLM 二级介入、可接口关闭。
-- **公司简介 LLM 自动生成**：每个 Company `notes` 字段可由 LLM 基于该公司的近 30 天 items 数据每月跑一次自动生成二句话，仍由人工 review 后写回 `companies.yaml`。
-- **公司数据可视化**：公司页底部追加简单的活动热度图（按天事件数），不上第三方图表库（用 SVG 自绘 ≤ 100 行）。
+- **全文检索**：D1 FTS5 或客户端 flexsearch（开工前先 spike 验证 FTS5 在 D1 的支持度，ADR-0014），索引 `title + summary + bodyMd`，顶部搜索框、命中高亮、跨期定位。
+- **公司活动热度图**（可选）：公司页底部按天事件数的 SVG 自绘热度图（≤ 100 行，无第三方图表库）。
 
 ### 出口标准
-- 搜索"Kimi 上市"能在 cursor 分页结果中高亮返回所有相关 Item。
-- "Kimi IPO" 这类跨日事件在时间线上显示为单一主题卡片带 N 条子事件，可展开。
-- 公司页 `notes` 由 LLM 月度提议写 `companies-pending.yaml`，人工 budget ≤ 5 分钟/月。
-- 公司页活动热度图正确显示，无第三方 chart 依赖。
+- 搜索"Kimi 上市"能高亮返回所有标题/摘要/正文命中 Item，跨期定位无遗漏。
+- （若做热度图）公司页活动热度图正确显示，无第三方 chart 依赖。
 
 ### 非目标
 - 语义跨公司聚类（行业主题 graph）
+- LLM 话题聚类 / 公司简介自动生成（已裁剪，远期可选，ADR-0014）
 - 自动告警 / 订阅推送
-- RAG 问答（Phase 3）
+- 语义检索 / RAG（已裁剪，ADR-0014）
 
 ### 依赖的 ADR
-- ADR-0001（白名单真相源，不变）
-- ADR-0002（Item schema 不变，可能新增 derived 字段如 `cluster_id`）
-- ADR-0009（LLM 任务设计原则不变，新增 prompt 任务）
-- 新增 ADR-0012（待写）：话题聚类缓存策略与 `cluster_id` schema 设计
+- ADR-0001 / 0002（白名单与 Item schema 不变，FTS 影子表不破原字段）
+- ADR-0014（检索承接方案）
+- 新增 ADR-0015（待写）：全文检索选型（FTS5 vs flexsearch）与索引维护策略
 
-## 6. Phase 3 · RAG 问答（未启动）
+## 6. Phase 3 · RAG 问答（已裁剪）
 
-### 目标
-引入语义检索 + AI 概览，回答"Kimi 最近发生了什么"这类自然语言问题。
+原计划的 Vectorize 索引 + `/ask` 视图 + 流式回答 + 配额限流**整体裁剪**（ADR-0014，2026-08-28）：数千条 Item 的语料量级下，全文检索（Phase 2）已能覆盖主要查询诉求，向量检索的子系统成本（embedding 流水线、检索时效窗口、配额限流）不成立。
 
-### 包含
-- **Vectorize index**：用 Workers AI embedding 把每个 Item 的 `summary + bodyMd` 分块（建议每块 256 token、50 token overlap）写入 Vectorize，item_id 作为 metadata。
-- **`/ask` 视图**：顶部输入框 + 左侧对话历史 + 右侧回答 + citations（链接到原 Item 与原 Daily Issue）。
-- **RAG 答时同前 join**：检索后按 item_id 回 D1 取展示字段，复用 read API。
-- **流式响应**：用 Workers AI streaming（ReadableStream）逐步输出回答。
-- **配额控制**：单 IP 每天最多 N 次问答，超过提示；个人用户场景而非企业级 SLA。
-- **citation 链接回原 Item**：回答里每个引用块点击跳到 `/stream?<filter to that item>` 或直接弹卡片。
-
-### 出口标准
-- "Kimi 最近发生了什么"的回答 cite 至少 3 条真实 Item，无 hallucination 编造。
-- 单次问答 P95 < 8s（含 embedding 检索 + LLM 流式）。
-- 配额策略生效，未付费用户不会无限消耗 LLM 配额。
-- 重新跑 cron 后新增 Item 自动进 Vectorize（无需手工重跑）。
-
-### 非目标
-- 跨用户对话记忆（每个用户独立 session 不持久化）
-- 自定义模型切换（MVP 用 Workers AI 一家）
-- 企业级 RBAC / 审计
-
-### 依赖的 ADR
-- ADR-0005 storage stack 的 RAG 设想在此 phase 落地
-- ADR-0006 env-driven runtime 参数继续适用（新增 `VECTORIZE_INDEX_NAME`、`RAG_LLM_MODEL` 等）
-- 新增 ADR-0013（待写）：Vectorize index schema 与 RAG 流水线设计
-- 新增 ADR-0014（待写）：配额策略与限流实现
+若未来数据量或产品需求升级到需要语义检索，重启本 phase 时需新写 ADR：Vectorize index schema、embedding 选型、检索后回 join D1 的契约、配额与限流。
 
 ## 7. Phase 4 · 产品化（未启动）
 
 ### 目标
-从"个人查阅工具"延伸到"多用户查阅产品"，加固运维与稳定性。
+从"个人本地工具"延伸到"多用户查阅产品"，加固运维与稳定性。**以阶段 6 部署日完成为前置。**
 
 ### 包含
 - **多用户基础设施**：无账号系统（仍匿名），但加配额、速率限制、被滥用防护（Cloudflare WAF / Turnstile）。
-- **监控与告警**：cron 失败 / D1 不可达 / R2 写失败时通过 Email Routing 或 Discord webhook 告警（避免 dev-only 的 `sync_log` 黑洞）。
-- **备份策略**：R2 原文已是天然备份；D1 通过 `wrangler d1 export` 定期导出到 R2 另一 bucket，作 daily snapshot。
-- **性能优化**：read API 加 Edge Cache Reserve、首页 SSR 或 ISR（重新评估 `output: export` 静态导出是否仍合理）；首页 critical path 数据预取。
-- **可观测性**：Workers Logs 接 Cloudflare Logpush，Item 入库延迟、LLM 调用成功率、cron 频率可视化。
+- **监控与告警**：cron 失败 / D1 不可达 / 拉取失败时通过 Email Routing 或 Discord webhook 告警（避免 `sync_log` 黑洞）。
+- **备份策略**：D1 定期 `wrangler d1 export` 到 R2 作 daily snapshot（`sources` 表即原文备份；是否另迁 R2 归档在部署日评估）。
+- **性能优化**：read API 加 Edge Cache Reserve、首页/事件流 ISR 评估（重新审视 `output: export` 静态导出是否仍合理）。
+- **可观测性**：Workers Logs 接 Cloudflare Logpush，Item 入库延迟、enrich 回填成功率、cron 频率可视化。
 
 ### 出口标准
-- 监控 dashboard 显示最近 7 天 cron 成功率 ≥ 99%、LLM 失败可追溯。
+- 监控 dashboard 显示最近 7 天 cron 成功率 ≥ 99%、enrich 失败可追溯。
 - D1 每日 snapshot 在 R2 上可见、人工 restore 测试通过。
 - 首页 LCP < 1.5s（Cloudflare Pages + 全球 CDN）。
 - 异常事件告警触达时间 < 5 分钟。
@@ -144,18 +115,17 @@ ADR-0001 至 ADR-0011 全部。
 - 收费
 
 ### 依赖的 ADR
-- ADR-0010 dev/deploy topology 在此 phase 重新评估是否拆出 Email Worker / WAF Worker 等
-- 新增 ADR-0015（待写）：备份与 restore 流程
-- 新增 ADR-0016（待写）：监控告警拓扑
+- ADR-0010 / 0013（部署拓扑）在此 phase 重新评估是否拆出告警 Worker 等
+- 新增 ADR-0016（待写）：备份与 restore 流程
+- 新增 ADR-0017（待写）：监控告警拓扑
 
 ## 8. 各 Phase 的工程节奏建议
 
 ```text
 Phase 0  立基            已用 1 个 work session
-Phase 1  MVP             估 6 个 work session（按 mvp-build-phases 6 子阶段各 1）
-Phase 2  检索 + 智能化    估 3 个 work session
-Phase 3  RAG 问答        估 4 个 work session
-Phase 4  产品化          估 5 个 work session
+Phase 1  MVP             估 6 个 work session（阶段 0-5 各 1）+ 可选 1 个部署日
+Phase 2  检索            估 1-2 个 work session
+Phase 4  产品化          估 4 个 work session
 ```
 
 每个 phase 完成后：
@@ -165,26 +135,26 @@ Phase 4  产品化          估 5 个 work session
 
 ## 9. 风险与取舍
 
-- **Phase 2 话题聚类的 LLM 介入面扩张**：LLM 介入加深、token 成本上升、引入幻觉风险。取舍：拉开 LLM_ENABLED 开关 → Phase 2 要新增 ADR 把"聚合缓存"路径设计清楚，避免回流污染 D1。
-- **Phase 3 Vectorize 数据时效**：新 Item 入 D1 后需异步进 Vectorize，存在时间窗口用户问题答不到。取舍：cron Worker 末尾加 "embed 增量"任务，复用 enrich_cache 同模式。
-- **Phase 4 静态导出 vs ISR**：`output: export` 与 Cloudflare Pages 静态资产绑定，引入 ISR 需迁到 Pages Functions。取舍：先把首页 + 事件流改为 ISR，公司页继续静态。
+- **D1 对 FTS5 的支持度未验证**：Phase 2 开工前先做 spike；不支持则降级客户端 flexsearch 索引（零后端、构建期生成索引文件，代价是索引随数据更新需重建）。
+- **v1 口径分裂（首页实时源 vs D1）**：新期在首页与三视图的落地时间可能不一致。ACCEPT：v1 本地工具场景可接受，部署日统一（ADR-0013）。
+- **enrich 回填的 LLM 成本**：后移到部署日一次性批量 + `MAX_LLM_PER_RUN` 限流，长期增量成本可控（多数 Item 零 LLM 调用）。
+- **wrangler 本地模拟与生产 D1 的行为差异**：MVP 查询均为简单 SQL，风险低；部署日首次 `--remote` 联调时抽查对账。
 - **跨 phase 节奏不强制连续**：每个 phase 独立可交付，之间可有任意长间隔、不动现网。
 
 ## 10. Phase 间接口稳定性
 
 | 接口 / 字段 | 稳定性来源 | 跨 phase 是否变更 |
 |---|---|---|
-| Item schema | ADR-0002 | Phase 2 可能加 `cluster_id` 派生字段；不破原字段 |
-| Company Registry | ADR-0001 | 不变；Phase 2 加 LLM 月度 notes 提议 |
-| read API 5 端点 | PRD impl decisions | Phase 3 新增 `/ask`；不破原 5 端点 |
-| D1 schema | `worker/sync/schema.sql` | Phase 2 加 `clusters`/`item_clusters` 表；Phase 3 加 Vectorize binding（不破 D1） |
-| Worker env vars | ADR-0006 | 各 phase 按需要新增，不破现 vars |
-| Company 归属两段 | ADR-0003 + ADR-0009 | 不变；Phase 2 在此之上加话题聚类层 |
+| Item schema | ADR-0002 | 不破原字段；Phase 2 可能加 FTS 影子表 |
+| Company Registry | ADR-0001 | 不变；LLM 提议流程部署日随 enrich 回填启用 |
+| read API 5 端点 | PRD impl decisions | 不破原 5 端点；Phase 2 可能新增搜索端点 |
+| D1 schema | `worker/sync/schema.sql` | Phase 1 阶段 2 增 `sources`（六表，ADR-0013）；Phase 2 加 FTS 影子表 |
+| Worker env vars | ADR-0006 | 各 phase 按需要新增，不破现 vars；LLM/R2 参数部署日生效（ADR-0013/0014） |
+| Company 归属 | ADR-0001 + 0003 段一 + ADR-0014 | v1 单段确定性、role=NULL；role 由部署日后 enrich 回填补齐 |
 
 ## 11. 何时更新 CURRENT_STATE
 
-- Phase 0 完成 → 已完成（CURRENT_STATE 第 23 行"当前阶段"段为 reflect"Phase 0 完成、Phase 1 进行中"）
-- Phase 1 完成 → 更新"当前阶段"、"主流程关键事实"（cron 已运行）
-- Phase 2/3/4 完成 → 同样按主流程变更更新
+- Phase 1 各子阶段完成 → 按 `mvp-build-phases.md` 第 10 节的触发点更新
+- Phase 2/4 完成 → 同样按主流程变更更新
 
-本文描述的 phase 划分是产品工程路线图，落地由各 phase 单独的子计划接管（MVP 已有 `mvp-build-phases.md`；Phase 2-4 启动时再补子计划文档）。本文不替代子计划。
+本文描述的 phase 划分是产品工程路线图，落地由各 phase 单独的子计划接管（MVP 已有 `mvp-build-phases.md`；Phase 2/4 启动时再补子计划文档）。本文不替代子计划。

@@ -33,5 +33,5 @@ _Avoid_: vendor、org、主体、机构
 _Avoid_: 公司列表、white list、entity table
 
 **Role**:
-Item 上每个 Company 的参与身份：`primary`（事件主导方/发布方）、`partner`（合作方/共同参与方）、`subject`（被报道对象，非主动方）。单 Company 归属时无需 Role；多 Company 归属时每家各带一个 Role。
+Item 上每个 Company 的参与身份：`primary`（事件主导方/发布方）、`partner`（合作方/共同参与方）、`subject`（被报道对象，非主动方）。单 Company 归属时无需 Role；多 Company 归属时每家各带一个 Role。v1 阶段多 Company 归属暂不区分 Role（并列渲染，role 均为空），Role 由部署日后的 LLM enrich 回填启用（ADR-0014）。
 _Avoid_: 角色、参与类型

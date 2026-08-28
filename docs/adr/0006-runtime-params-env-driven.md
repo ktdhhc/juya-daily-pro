@@ -1,5 +1,7 @@
 # 运行参数：环境变量驱动，可热改不改代码
 
+> **修订 2026-08-28（ADR-0013 / 0014）**：cron 相关参数与 `LLM_*` / `R2_BUCKET` 推迟到部署日生效；v1 本地同步仍遵循本文 env 驱动原则（`ARCHIVE_URL` / `MD_BASE` / `SYNC_LOOKBACK_DAYS`）。env 驱动机制本身不变。
+
 ## Decision
 
 cron Worker 与 sync 流程的可调参数全部走 Cloudflare Worker 环境变量（通过 `wrangler secret` / `wrangler.jsonc` `vars` 注入），便于不重新部署代码即可调整：

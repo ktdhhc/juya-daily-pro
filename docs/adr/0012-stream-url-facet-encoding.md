@@ -1,5 +1,7 @@
 # `/stream` URL 编码 facet 筛选状态
 
+> **修订 2026-08-28（ADR-0014）**：`/api/items` 分页已从 cursor token 改为按期分页 `?before_date=YYYY-MM-DD`。本文核心决策不变——URL 仍只编码 facet，`before_date` 属于加载位置、留在 JS 内部状态、不进 URL。
+
 ## Context
 
 `/stream` 视图的 facet 筛选（按公司 / 分类 / 日期范围）需要一种共享机制——用户在"Anthropic 模型发布近 30 天"这种切面找到有价值的视角后，希望能把 URL 分享给他人直接复现。但是否把 cursor 分页位置也编码进 URL 是个真实取舍。

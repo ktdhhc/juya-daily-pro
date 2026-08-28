@@ -60,7 +60,7 @@
 
 - 前端命令在仓库根目录下执行（`npm run dev`、`npm run build`）。
 - Worker 命令在仓库根目录下用 wrangler 执行（`wrangler dev`、`wrangler deploy`），通过 `wrangler.jsonc` 配置。
-- 一次性回填命令在根目录下 `npm run backfill`（本地 Node 脚本，连远程 D1/R2，不受 Worker CPU 时长约束）。
+- 一次性回填与增量同步命令在根目录下 `npm run backfill` / `npm run sync`（本地脚本，连 wrangler 本地模拟 D1，零 Cloudflare 登录；见 ADR-0013）。
 - 前端文件避免全部写在同一个大文件里；新增组件按职责拆分到 `src/components/`。
 - 优先运行有针对性的 Vitest 测试，不要每次默认 `npm test` 跑全量。
 - 高成本集成检查（真实 LLM 调用 / 远程 D1 roundtrip）不作为默认快速验证方式。

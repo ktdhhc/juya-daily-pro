@@ -1,5 +1,7 @@
 # LLM enrich 任务收窄：只判 primary，partner/subject 交启发式补
 
+> **修订 2026-08-28（ADR-0014）**：本任务设计保留，但执行时机后置为部署日后的离线批量回填，不在 v1 关键路径；v1 多家归属并列、role 全 NULL。
+
 ## Context
 
 ADR-0003 定了"白名单做候选集，LLM 在多家时定 role"。落地时 LLM 任务设计有两种极端：

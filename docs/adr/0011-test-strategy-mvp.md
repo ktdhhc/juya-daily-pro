@@ -1,5 +1,7 @@
 # 测试策略：MVP 仅测纯函数
 
+> **修订 2026-08-28（ADR-0014）**：`enrichLLM` prompt 组装与启发式 role 补全两行测试随后置的 enrich 回填一并落地（部署日）；v1 只测 `parseMarkdown` 与 `matchCompanies`。
+
 ## Decision
 
 MVP 阶段只测下游入口的纯函数：
