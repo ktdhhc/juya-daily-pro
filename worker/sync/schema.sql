@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS items (
   id              TEXT PRIMARY KEY,          -- YYYYMMDD-N
   date            TEXT NOT NULL,             -- YYYY-MM-DD
   tag             TEXT NOT NULL DEFAULT '',  -- #N；解析时缺失留空
+  sequence_int    INTEGER NOT NULL DEFAULT 0, -- #N 整数（#3 -> 3），用于稳定 cursor 排序；缺则 0
   category        TEXT NOT NULL DEFAULT '',  -- 来自概览
   title           TEXT NOT NULL,
   primary_link    TEXT,                       -- 无主链接时 NULL
@@ -20,6 +21,8 @@ CREATE TABLE IF NOT EXISTS items (
 CREATE INDEX IF NOT EXISTS idx_items_date      ON items(date DESC);
 CREATE INDEX IF NOT EXISTS idx_items_category  ON items(category);
 CREATE INDEX IF NOT EXISTS idx_items_enrich   ON items(enrich_state) WHERE enrich_state != 'ok';
+-- /stream 列表 cursor 排序专用
+CREATE INDEX IF NOT EXISTS idx_items_stream_cursor ON items(date DESC, sequence_int ASC);
 
 -- ─── companies（Company Registry 镜像，源=data/companies.yaml）────────
 CREATE TABLE IF NOT EXISTS companies (

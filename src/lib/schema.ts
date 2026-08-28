@@ -10,6 +10,7 @@ export interface Item {
   id: string; // YYYYMMDD-N
   date: string; // YYYY-MM-DD
   tag: string; // #N
+  sequenceInt: number; // #N 整数（#3 -> 3），用于稳定 cursor 排序；解析缺失则 0
   category: string; // 来自概览：要闻 / 模型发布 / ...
   title: string;
   primaryLink?: string; // 无主链接时缺省
