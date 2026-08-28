@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { DailyEntry, ParsedDaily, parseMarkdown, MD_BASE } from "@/lib/github";
+import { DailyEntry, ParsedDaily, parseMarkdown, MD_BASE } from "@/lib/juya";
 import { Header } from "./Header";
 import { DatePicker } from "./DatePicker";
 import { ArticleView } from "./ArticleView";

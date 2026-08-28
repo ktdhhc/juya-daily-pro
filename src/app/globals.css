@@ -115,7 +115,6 @@ body { background-color: var(--bg); color: var(--fg); font-family: var(--theme-f
 }
 .reading-progress { position: absolute; bottom: 0; left: 0; width: 100%; height: 2px; background: var(--accent); transform-origin: left; transform: scaleX(0); will-change: transform; z-index: 1; }
 .site-brand { font-family: var(--theme-font-display); color: var(--fg); }
-.site-badge { background: var(--accent-soft); color: var(--accent); border-radius: var(--theme-radius); }
 .site-github-link { color: var(--fg-muted); }
 
 [data-theme="ink"] .site-header { box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
@@ -123,14 +122,10 @@ body { background-color: var(--bg); color: var(--fg); font-family: var(--theme-f
 [data-theme="cyber"] .site-header { box-shadow: 0 1px 30px rgba(0,229,255,0.06); }
 [data-theme="cyber"] .reading-progress { box-shadow: 0 0 8px rgba(0,229,255,0.5); }
 [data-theme="cyber"] .site-brand { text-shadow: 0 0 20px rgba(0,229,255,0.3); letter-spacing: 0.08em; font-size: 0.9rem; }
-[data-theme="cyber"] .site-badge { border: 1px solid var(--accent); border-radius: 0; letter-spacing: 0.15em; font-family: var(--theme-font-display); font-size: 0.65rem; }
 [data-theme="mono"] .site-header { box-shadow: 0 2px 12px rgba(42,60,30,0.05); }
 [data-theme="mono"] .site-brand { font-style: italic; letter-spacing: 0.02em; }
-[data-theme="mono"] .site-badge { background: var(--botanical-gold-soft); color: var(--botanical-gold); border-radius: 9999px; }
 [data-theme="dune"] .site-brand { font-weight: 700; letter-spacing: 0.03em; }
-[data-theme="dune"] .site-badge { background: var(--dune-warm); color: var(--dune-dark); border-radius: 4px; font-weight: 600; }
 [data-theme="blueprint"] .site-brand { font-family: "IBM Plex Mono", monospace; font-size: 0.95rem; letter-spacing: 0.03em; }
-[data-theme="blueprint"] .site-badge { border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 2px; font-family: "IBM Plex Mono", monospace; font-size: 0.6rem; letter-spacing: 0.12em; }
 
 
 /* ══════════════════════════════════════════
@@ -317,7 +312,6 @@ body { background-color: var(--bg); color: var(--fg); font-family: var(--theme-f
 [data-theme="cyber"] .article-content ul li::before { content: none; }
 [data-theme="cyber"] .article-content hr { border: none; height: 0; margin: 2rem 0; }
 
-/* ── BOTANICAL ── */
 /* ── MONO 极简 — pure black & white, system font, zero decoration ── */
 [data-theme="mono"] .article-content { font-family: system-ui, -apple-system, "Noto Sans SC", sans-serif; }
 [data-theme="mono"] .article-content h2 { font-size: 1.15rem; font-weight: 700; line-height: 1.4; margin-top: 2.5rem; margin-bottom: 0.75rem; color: var(--fg); }

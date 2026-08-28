@@ -7,7 +7,7 @@ import {
   parseMarkdown,
   DailyEntry,
   ParsedDaily,
-} from "@/lib/github";
+} from "@/lib/juya";
 import { DailyPage } from "@/components/DailyPage";
 
 export default function Home() {

@@ -1,5 +1,6 @@
 // 数据源：橘鸦官方站 daily.juya.uk
 // （原 GitHub 源 jujuyaya/juya-ai-daily 因作者账号被封已失效）
+// 部署日（ADR-0013）首页将迁移到 /api/daily/:date，届时本文件 fetch 链路下沉 Worker，前端仅保留渲染。
 export const SITE = "https://daily.juya.uk";
 export const MD_BASE = `${SITE}/markdown`;
 

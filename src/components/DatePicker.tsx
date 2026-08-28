@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { DailyEntry } from "@/lib/github";
+import { DailyEntry } from "@/lib/juya";
 
 interface Props {
   entries: DailyEntry[];

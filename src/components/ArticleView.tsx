@@ -2,7 +2,7 @@
 
 import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ParsedDaily, DailyEntry } from "@/lib/github";
+import { ParsedDaily, DailyEntry } from "@/lib/juya";
 import { useState, useEffect, useCallback, ReactNode, RefObject } from "react";
 
 interface Props {
