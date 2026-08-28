@@ -98,3 +98,18 @@ export function enrichStateUpdateSql(okIds: string[], missingIds: string[]): str
   }
   return statements.join("\n");
 }
+
+// ---------- sync_log（spec05 Step 1.2，ADR-0008）----------
+
+// 单期同步结果 UPSERT：date 为 PK，重跑覆盖（attempted_at/status/error_message 全非键列更新）。
+// attempted_at 用 datetime('now')（插入与冲突更新都取执行时刻）；errorMessage 空串（ok 档）→ 裸 NULL，
+// 非空 → 字面量（转义规则同 escapeSqlText）。
+export function syncLogUpsertSql(date: string, status: string, errorMessage: string): string {
+  const err = errorMessage === "" ? "NULL" : quote(errorMessage);
+  return (
+    "INSERT INTO sync_log (date, attempted_at, status, error_message) " +
+    `VALUES (${quote(date)}, datetime('now'), ${quote(status)}, ${err}) ` +
+    "ON CONFLICT(date) DO UPDATE SET attempted_at = excluded.attempted_at, " +
+    "status = excluded.status, error_message = excluded.error_message;"
+  );
+}

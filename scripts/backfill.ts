@@ -2,14 +2,14 @@
 // 纯逻辑（archive 解析 / issue 解析 / SQL 生成）已在 worker/sync/* 测过（ADR-0011）；
 // 本脚本只做：fetch → parse → SQL 累积 → 临时 SQL 文件 → `wrangler d1 execute juya-daily --local --file`
 // → 失败降级逐期分块 → counts 查询打印。全程零 Cloudflare 登录（仅 --local）。
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { Item } from "../src/lib/schema";
 import { parseArchiveDates } from "../worker/sync/archive";
 import { parseIssue } from "../worker/sync/parse";
 import { companiesUpsertSql, itemsUpsertSql, sourcesUpsertSql } from "../worker/sync/sqlgen";
-import { parseWranglerJson, runWrangler } from "./lib/wrangler-cli";
+import { parseWranglerJson, runWrangler, varFromWranglerConfig } from "./lib/wrangler-cli";
 import { REGISTRY } from "../src/lib/registry.generated";
 
 // ---------- 常量 / 环境 ----------
@@ -17,18 +17,8 @@ import { REGISTRY } from "../src/lib/registry.generated";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DB = "juya-daily";
 
-// ARCHIVE_URL / MD_BASE 与 worker 运行时同源：从 wrangler.jsonc vars 读取，缺省回退 spec 值。
-function varFromWranglerConfig(key: string, fallback: string): string {
-  try {
-    const text = readFileSync(path.join(ROOT, "wrangler.jsonc"), "utf8");
-    const m = new RegExp(`"${key}"\\s*:\\s*"([^"]+)"`).exec(text);
-    if (m) return m[1];
-  } catch {
-    // 读不到配置时用 spec 默认值
-  }
-  return fallback;
-}
-
+// ARCHIVE_URL / MD_BASE 与 worker 运行时同源：从 wrangler.jsonc vars 读取（spec05 起共享
+// varFromWranglerConfig 迁至 scripts/lib/wrangler-cli.ts，此处仅 import，行为不变）。
 const ARCHIVE_URL = varFromWranglerConfig("ARCHIVE_URL", "https://daily.juya.uk/archive/");
 const MD_BASE = varFromWranglerConfig("MD_BASE", "https://daily.juya.uk/markdown");
 const CONCURRENCY = 3;

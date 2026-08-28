@@ -4,7 +4,7 @@
 // （scripts/lib/ 上跳两级 = 仓库根，与迁移前同指一处，行为不变）。
 // 全程仅 --local，零 Cloudflare 登录。
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -50,4 +50,17 @@ export function parseWranglerJson(stdout: string): unknown {
     throw new Error(`wrangler --json 输出无法解析：${stdout.slice(0, 300)}`);
   }
   return JSON.parse(stdout.slice(start, end + 1));
+}
+
+// wrangler.jsonc vars 读取（自 scripts/backfill.ts 原样迁移共享，spec05 Step 3）：
+// 读不到配置时回退 spec 默认值；仅匹配字符串值（ARCHIVE_URL / MD_BASE / SYNC_LOOKBACK_DAYS 均为字符串）。
+export function varFromWranglerConfig(key: string, fallback: string): string {
+  try {
+    const text = readFileSync(path.join(ROOT, "wrangler.jsonc"), "utf8");
+    const m = new RegExp(`"${key}"\\s*:\\s*"([^"]+)"`).exec(text);
+    if (m) return m[1];
+  } catch {
+    // 读不到配置时用 spec 默认值
+  }
+  return fallback;
 }

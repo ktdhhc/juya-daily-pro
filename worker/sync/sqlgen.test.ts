@@ -10,6 +10,7 @@ import {
   itemCompaniesUpsertSql,
   itemsUpsertSql,
   sourcesUpsertSql,
+  syncLogUpsertSql,
 } from "./sqlgen";
 
 // ---------- 测试辅助 ----------
@@ -264,6 +265,38 @@ describe("enrichStateUpdateSql", () => {
   it("id 含单引号 → 字面量转义", () => {
     const sql = enrichStateUpdateSql(["it's"], []);
     expect(sql).toContain("'it''s'");
+    expectDiscipline(sql);
+  });
+});
+
+// ---------- syncLogUpsertSql（spec05 Step 1.2）----------
+
+describe("syncLogUpsertSql", () => {
+  it("ok：attempted_at=datetime('now')、error_message 裸 NULL、ON CONFLICT(date) 全非键列更新、; 收尾单语句", () => {
+    const sql = syncLogUpsertSql("2026-08-28", "ok", "");
+    expect(sql).toBe(
+      "INSERT INTO sync_log (date, attempted_at, status, error_message) " +
+        "VALUES ('2026-08-28', datetime('now'), 'ok', NULL) " +
+        "ON CONFLICT(date) DO UPDATE SET attempted_at = excluded.attempted_at, " +
+        "status = excluded.status, error_message = excluded.error_message;",
+    );
+    expect(sql).not.toContain("'NULL'"); // error_message 是裸 NULL，非字符串
+    expect(sql).toContain("datetime('now')");
+    expectDiscipline(sql);
+  });
+
+  it("fetch_failed：错误消息进 error_message 字面量（404 演练形态）", () => {
+    const sql = syncLogUpsertSql("2099-01-01", "fetch_failed", "HTTP 404 https://daily.juya.uk/markdown/2099-01-01.md");
+    expect(sql).toContain(
+      "'2099-01-01', datetime('now'), 'fetch_failed', " +
+        "'HTTP 404 https://daily.juya.uk/markdown/2099-01-01.md'",
+    );
+    expectDiscipline(sql);
+  });
+
+  it("error_message 含单引号与换行 → 引号翻倍、换行只进字面量，纪律成立", () => {
+    const sql = syncLogUpsertSql("2026-08-27", "parse_failed", "issue date not found: 'x'\n第二行");
+    expect(sql).toContain("'issue date not found: ''x''\n第二行'");
     expectDiscipline(sql);
   });
 });

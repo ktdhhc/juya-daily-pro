@@ -3,7 +3,7 @@ import typescript from 'eslint-config-next/typescript';
 
 const eslintConfig = [
   {
-    ignores: ['.next/**', 'out/**', 'worker/**'],
+    ignores: ['.next/**', 'out/**', 'worker/**', '.wrangler/**'],
   },
   ...coreWebVitals,
   ...typescript,

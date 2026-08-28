@@ -12,7 +12,8 @@
     "test": "vitest run --passWithNoTests",
     "gen:registry": "tsx scripts/gen-registry.ts",
     "backfill": "tsx scripts/backfill.ts",
-    "match:all": "tsx scripts/match-all.ts"
+    "match:all": "tsx scripts/match-all.ts",
+    "sync": "tsx scripts/sync.ts"
   },
   "keywords": [],
   "author": "",
