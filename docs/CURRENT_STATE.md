@@ -41,7 +41,7 @@
 
 ## 主流程关键事实
 
-1. **数据流（v1）**：`npm run sync` 查 `max(items.date)` + `SYNC_LOOKBACK_DAYS` → 抓 daily.juya.uk archive → 拉新期 markdown → 写 D1 `sources` → `parseIssue` → `matchCompanies`（确定性单段，ADR-0014）→ upsert D1。`npm run backfill` 为全量历史回填。均幂等（`ON CONFLICT DO UPDATE`）。**当前状态：backfill 已跑通（sources 72 / items 1105 / companies 30），sync 待阶段 5。**
+1. **数据流（v1）**：`npm run sync` 查 `max(items.date)` + `SYNC_LOOKBACK_DAYS` 决定窗口 → 抓 daily.juya.uk archive → 拉新期 markdown → 写 D1 `sources` → `parseIssue` → `matchCompanies`（确定性单段，ADR-0014）→ upsert D1 + 写 sync_log（单期容错：fetch/parse 失败记 `fetch_failed`/`parse_failed`，不阻塞后续期；`-- --dates=` 可强制补拉）。`npm run backfill` 全量回填、`npm run match:all` 全量重匹配，均幂等（`ON CONFLICT DO UPDATE`）。**当前：backfill 72 期 / items 1105 / companies 30 / item_companies 1222；sync 幂等与 404 容错已验证。**
 2. **前端取数**：三新视图 `/stream` `/company` `/company/[id]` 走相对路径 `/api/*`（dev 由 next.config rewrites 代理到本地 `wrangler dev :8787`）；**首页 `/` 维持直连 daily.juya.uk 不变**（部署日才迁移统一口径，ADR-0013）。fetch 统一走 `src/lib/api.ts` 的 apiFetch（错误集中处理为 ApiError）。
 3. **白名单闸门**：只有 `data/companies.yaml` 中登记的 Company 才会被标到 Item 上，retired 公司不参与匹配。yaml 是唯一真相源，sync 时幂等 upsert D1 `companies` 表。
 4. **归属规则（v1）**：单段确定性匹配——0 命中 `missing_owner`（仍入库）、1 家单归属、≥2 家并列归属且 **role 全部 NULL**（徽章并列不分主次）；LLM enrich（role 回填）为部署日后离线任务，`enrich_cache` 表保留但 v1 不写入。
