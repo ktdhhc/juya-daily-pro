@@ -2,6 +2,8 @@
 
 > 来源：2026-08-29 用户需求——结合 LLM 的数据整理能力。上游：ADR-0009（LLM 任务收窄：只判 primary，启发式补 partner/subject）、ADR-0001（companies-pending 候选流程，人工入册）、ADR-0014（LLM 移出同步关键路径，离线批跑）。
 > 两个离线作业：**enrich 归属裁决** 与 **候选公司提议**，共用同一套 LLM 接入层。本文可按顺序逐步执行。**全程零 Cloudflare 登录；LLM 调用仅发生在真实运行时（单测不调真实 LLM，ADR-0011）。**
+>
+> **2026-08-29 修订（配合 spec10 三段制编辑工作流）**：本 spec 定位收窄为**存量数据回填工具**（对已入库的历史数据离线批跑）；新增数据的「同步-解析-入库」工作流见 `spec10-editorial-workflow.md`（ADR-0015）。为让 Worker 解析段复用同一套判别逻辑，纯函数位置调整为 `src/lib/llm/enrich.ts` 与 `src/lib/llm/propose.ts`（scripts 侧只留薄 IO 胶水）；`itemCompaniesUpsertSql` 的 COALESCE 语义扩展保留在本 spec（两段共用）。
 
 ## 目标
 
@@ -28,7 +30,7 @@
 
 ### Step 2 — enrich 作业（先红后绿：纯函数全测，IO 薄胶水）
 
-2.1 `scripts/llm/enrich-prompt.ts` 纯函数：
+2.1 `src/lib/llm/enrich.ts` 纯函数：
   - `buildEnrichPrompt(item, candidates)`：系统提示=中文 AI 行业编辑、只输出 JSON；用户材料=标题/摘要/正文（**4000 字符截断**）+ 候选清单（id/name/notes/命中别名证据）；问题=从候选中选一个主导公司，输出 `{"primary_company_id": "...", "reason": "..."}`；
   - `parseEnrichResponse(raw, candidateIds)`：剥 ```json 围栏 → JSON.parse → 校验 primary ∈ candidateIds → 返回 `{primaryId, reason}`，任何不合法返回 null；
   - `deriveRoles(item, candidates, primaryId)`：其余候选 title 命中 → `partner`；仅 body 命中 → `subject`；产出 `[{companyId, role, reason}]`（reason 仅 primary）。
@@ -38,7 +40,7 @@
 
 ### Step 3 — 候选公司提议作业
 
-3.1 `scripts/llm/propose-prompt.ts` 纯函数：`buildProposePrompt(item, registryNames)`——三分类判别：①活跃科技/AI 公司（未在册 → 建议入册：`{kind:"company", id 建议, name, aliases 建议, evidence}`）②已入册公司的产品/子品牌（`{kind:"product", parent, evidence}` → 若 parent 在册则仅记录，提示可加 alias）③无关实体（`{kind:"ignore"}`）；输出仅 JSON。
+3.1 `src/lib/llm/propose.ts` 纯函数：`buildProposePrompt(item, registryNames)`——三分类判别：①活跃科技/AI 公司（未在册 → 建议入册：`{kind:"company", id 建议, name, aliases 建议, evidence}`）②已入册公司的产品/子品牌（`{kind:"product", parent, evidence}` → 若 parent 在册则仅记录，提示可加 alias）③无关实体（`{kind:"ignore"}`）；输出仅 JSON。
 3.2 vitest：三分类用例 + 幻觉 parent 不在册处理 + parse 分支（红→绿）。
 3.3 `scripts/propose-companies.ts`（`npm run propose:companies`）：读 missing_owner 条目（`--limit` 默认 40/轮）→ 逐条判别 → **不直接入册**：合并（按建议 id 去重）追加写 `data/companies-pending.yaml`（CompanyCandidate 形态：id/name/aliases/confidence/reason/source=item id）→ 报告（company/product/ignore 分布 + 建议清单）。
 3.4 人工流程（一次性演示）：review pending 文件 → 认可的搬进 `companies.yaml` → `gen:registry` → `sync` + `match:all` → missing_owner 下降。**LLM 永不直接改白名单**。
