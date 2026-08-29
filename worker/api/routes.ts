@@ -1,7 +1,7 @@
-// read API 路由分发（spec04 A4）：5 端点 + POST /api/sync（spec06 契约扩展 2）+ 统一错误格式 + caches.default 包装。
+// read API 路由分发（spec04 A4）：5 端点 + POST /api/sync（spec06 契约扩展 2）+ GET /api/admin/ping（spec07 Step 1）+ 统一错误格式 + caches.default 包装。
 // 契约（spec04「API 契约」节 + spec06「契约扩展」节，逐字段为准）：
 // - 错误统一 { error: { code, message } }（400 invalid_param / 403 unauthorized / 404 daily_not_found|company_not_found|not_found / 405 method_not_allowed / 500 internal_error|sync_failed）
-// - 成功响应（200）带 Cache-Control: public, max-age=60 并写入 caches.default（本地近似 no-op，读写失败不阻塞正确性）；POST /api/sync 不走缓存
+// - 成功响应（200）带 Cache-Control: public, max-age=60 并写入 caches.default（本地近似 no-op，读写失败不阻塞正确性）；POST /api/sync 不走缓存，GET /api/admin/ping 不走缓存（探针须每次实测）
 // - 本文件属 Worker fetch 层，按 ADR-0011 不做 vitest，以 wrangler dev + curl 验收
 import { REGISTRY } from "../../src/lib/registry.generated";
 import { parseMarkdown } from "../../src/lib/juya";
@@ -18,6 +18,7 @@ import {
   sourcesUpsertSql,
   syncLogUpsertSql,
 } from "../sync/sqlgen";
+import { requireAdmin } from "./auth";
 import {
   DEFAULT_PAGE_LIMIT,
   MAX_BOUND_PARAMS,
@@ -32,12 +33,12 @@ import {
 
 export interface Env {
   DB: D1Database;
-  // 同步端点 vars（与 wrangler.jsonc vars 对齐；缺省走 spec 默认值）；SYNC_TOKEN 为可选 secret——
-  // 非空时要求请求头 x-sync-token 相等，否则 403；未设置（本地 .dev.vars 不配）则开放（spec06 契约扩展 2）
+  // 同步端点 vars（与 wrangler.jsonc vars 对齐；缺省走 spec 默认值）；ADMIN_TOKEN 为可选 secret——
+  // 非空时要求请求头 x-admin-token 相等，否则 403；未设置（本地 .dev.vars 不配）则开放（spec07 Step 1）
   ARCHIVE_URL?: string;
   MD_BASE?: string;
   SYNC_LOOKBACK_DAYS?: string;
-  SYNC_TOKEN?: string;
+  ADMIN_TOKEN?: string;
 }
 
 const RE_DATE = /^\d{4}-\d{2}-\d{2}$/; // YYYY-MM-DD（格式级校验，历法合法性交给 D1 匹配结果）
@@ -105,6 +106,7 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     if (pathname === "/api/items") return await methodGuardGet(request, () => listItems(url, env));
     if (pathname === "/api/companies") return await methodGuardGet(request, () => companiesIndex(env));
     if (pathname === "/api/sync") return await syncRoute(request, env);
+    if (pathname === "/api/admin/ping") return await adminPingRoute(request, env);
 
     const dailyDate = matchPrefix(pathname, "/api/daily/");
     if (dailyDate !== null) {
@@ -550,18 +552,32 @@ async function syncNow(env: Env): Promise<Response> {
   }
 }
 
-/** 守卫：SYNC_TOKEN 非空时要求 x-sync-token 相等，否则 403 unauthorized；未设置则开放 */
+/** 守卫：ADMIN_TOKEN 非空时要求 x-admin-token 相等，否则 403 unauthorized；未设置则开放（spec07 Step 1 统一） */
 function syncRoute(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") {
     return Promise.resolve(
       jsonError(405, "method_not_allowed", `仅支持 POST（实际 ${request.method}）`, { Allow: "POST" })
     );
   }
-  const token = env.SYNC_TOKEN;
-  if (token !== undefined && token !== "" && request.headers.get("x-sync-token") !== token) {
-    return Promise.resolve(jsonError(403, "unauthorized", "缺少或错误的 x-sync-token 请求头"));
+  if (!requireAdmin(env.ADMIN_TOKEN, request.headers.get("x-admin-token"))) {
+    return Promise.resolve(jsonError(403, "unauthorized", "缺少或错误的管理口令（x-admin-token 请求头）"));
   }
   return syncNow(env);
+}
+
+// ---------- 端点 7：GET /api/admin/ping（spec07 Step 1.3，口令验证探针）----------
+
+// 与 syncRoute 同款 requireAdmin 守卫，但不进 withCache：探针必须每次实测，不吃 60s 缓存。
+function adminPingRoute(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") {
+    return Promise.resolve(
+      jsonError(405, "method_not_allowed", `仅支持 GET（实际 ${request.method}）`, { Allow: "GET" })
+    );
+  }
+  if (!requireAdmin(env.ADMIN_TOKEN, request.headers.get("x-admin-token"))) {
+    return Promise.resolve(jsonError(403, "unauthorized", "缺少或错误的管理口令（x-admin-token 请求头）"));
+  }
+  return Promise.resolve(jsonOk({ ok: true }));
 }
 
 // ---------- 工具 ----------

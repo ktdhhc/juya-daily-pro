@@ -2,6 +2,8 @@
 // Worker 由并行 agent 按同一契约开发；本文件只做 fetch 与类型，不做 mock。
 // 错误格式统一为 { error: { code, message } }。
 
+import { getAdminToken } from "./auth";
+
 export interface ItemOwner {
   /** Company Registry id（slug），owners 按 company id 排序；无 role（ADR-0014） */
   company: string;
@@ -118,15 +120,24 @@ export interface SyncResponse {
   failures: { date: string; error: string }[];
 }
 
-/** POST /api/sync：增量同步（spec06 B4）。SYNC_TOKEN 守卫生效时 403 = unauthorized（需要同步令牌） */
+/** POST /api/sync：增量同步（spec06 B4）。ADMIN_TOKEN 守卫生效时 403 = unauthorized（需要管理口令） */
 export function triggerSync(): Promise<SyncResponse> {
-  return request<SyncResponse>("/api/sync", { method: "POST", headers: { Accept: "application/json" } });
+  return request<SyncResponse>("/api/sync", { method: "POST" });
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, { headers: { Accept: "application/json" }, ...init });
+    // 管理口令自动附头（spec07 Step 2.2）：本地存有口令即全站请求带 x-admin-token，GET/POST 一律生效；
+    // headers 在 init 之后展开，保证任何调用方都无法把该头挤掉
+    const token = getAdminToken();
+    res = await fetch(path, {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        ...(token ? { "x-admin-token": token } : {}),
+      },
+    });
   } catch {
     throw new ApiError("network", 0, "网络不可达，请检查连接后重试");
   }

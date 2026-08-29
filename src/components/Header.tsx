@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState, RefObject } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
+import { AdminGate } from "./common/AdminGate";
 import { ApiError, triggerSync } from "@/lib/api";
+import { clearAdminToken, isAdmin } from "@/lib/auth";
 
 export type HeaderActive = "daily" | "stream" | "company";
 
@@ -28,7 +30,7 @@ const NAV_ITEMS: { key: HeaderActive; label: string; href: string }[] = [
 
 /** 全站共用报头（FRONTEND_DESIGN §4.1）。
  *  阅读页专属控件（进度条 / 复制链接 / 外链 / 日历入口 / 刊号）仅在 active="daily" 时出现；
- *  搜索与同步 icon-btn 全视图可见（spec06 B3/B4）。 */
+ *  搜索 icon-btn 全视图可见（spec06 B3）；同步 icon-btn 与「退出管理」仅管理员态渲染（spec07 2.3/2.4）。 */
 export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEntries, active, onSearch }: Props) {
   const router = useRouter();
   const [progress, setProgress] = useState(0);
@@ -47,6 +49,12 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
     if (onSearch) onSearch(t);
     else router.push(`/stream?query=${encodeURIComponent(t)}`);
   };
+
+  // 管理员态（spec07 2.3/2.4）：挂载后读一次 localStorage（静态导出首帧按访客渲染避免水合错位）；
+  // 不监听 storage 事件，跨页由各页 Header 挂载时各自读取
+  const [admin, setAdmin] = useState(false);
+  const [gateOpen, setGateOpen] = useState(false);
+  useEffect(() => setAdmin(isAdmin()), []);
 
   // 同步按钮（spec06 B4）：POST /api/sync，运行中旋转，成功细线小条约 5s 自散，失败一行错误 + 重试
   const [syncPhase, setSyncPhase] = useState<"idle" | "running" | "ok" | "fail">("idle");
@@ -71,7 +79,7 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
       setSyncMsg(
         e instanceof ApiError
           ? e.code === "unauthorized"
-            ? "需要同步令牌"
+            ? "需要管理口令"
             : e.message
           : "网络异常，请稍后重试"
       );
@@ -133,6 +141,23 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
         </nav>
 
         <div className="flex items-center gap-1 ml-auto">
+          {/* 管理入口（spec07 2.3）：低调文字链，访客态点击展开口令输入条，管理员态点击退出管理 */}
+          <button
+            type="button"
+            className="text-link text-xs shrink-0 mr-2"
+            onClick={() => {
+              if (admin) {
+                clearAdminToken();
+                setAdmin(false);
+              } else {
+                setGateOpen((v) => !v);
+              }
+            }}
+            aria-label={admin ? "退出管理" : "管理"}
+            title={admin ? "退出管理" : "管理"}
+          >
+            {admin ? "退出管理" : "管理"}
+          </button>
           {/* 统一搜索（spec06 B3，全视图） */}
           <button
             onClick={() => setSearchOpen((v) => !v)}
@@ -147,23 +172,25 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
           </button>
-          {/* 同步最近日报（spec06 B4，全视图） */}
-          <button
-            onClick={() => void runSync()}
-            className="icon-btn"
-            style={syncPhase === "fail" ? { color: "var(--accent)" } : undefined}
-            aria-label="同步最近日报"
-            title="同步最近日报"
-            aria-busy={syncPhase === "running"}
-          >
-            <svg
-              className={syncPhase === "running" ? "icon-spin" : undefined}
-              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+          {/* 同步最近日报（spec06 B4，spec07 2.4 起仅管理员态渲染，访客 DOM 中不出现） */}
+          {admin && (
+            <button
+              onClick={() => void runSync()}
+              className="icon-btn"
+              style={syncPhase === "fail" ? { color: "var(--accent)" } : undefined}
+              aria-label="同步最近日报"
+              title="同步最近日报"
+              aria-busy={syncPhase === "running"}
             >
-              <polyline points="23 4 23 10 17 10" />
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
-          </button>
+              <svg
+                className={syncPhase === "running" ? "icon-spin" : undefined}
+                width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+              >
+                <polyline points="23 4 23 10 17 10" />
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+              </svg>
+            </button>
+          )}
           {isDaily && issueNo != null && currentDate && (
             <span
               className="mr-2 text-xs whitespace-nowrap"
@@ -235,7 +262,18 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
         </div>
       )}
 
-      {/* 同步状态细线小条（spec06 B4）：成功约 5s 自散；失败一行错误 + 重试文字链；403 提示需要同步令牌 */}
+      {/* 管理口令输入条（spec07 2.3）：AdminGate 探针验证通过后升级管理员态并收起；Esc 收起 */}
+      {gateOpen && (
+        <AdminGate
+          onVerified={() => {
+            setAdmin(true);
+            setGateOpen(false);
+          }}
+          onClose={() => setGateOpen(false)}
+        />
+      )}
+
+      {/* 同步状态细线小条（spec06 B4）：成功约 5s 自散；失败一行错误 + 重试文字链；403 提示需要管理口令 */}
       {syncPhase === "ok" && (
         <div
           className="rule-t px-5 py-1.5 text-xs flex items-center gap-2 fade-up"
