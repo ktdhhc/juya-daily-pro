@@ -8,13 +8,14 @@ export interface SqlStatement {
   params: unknown[];
 }
 
-/** /api/items 分页与过滤参数（均可选；语义见 spec04「API 契约」3） */
+/** /api/items 分页与过滤参数（均可选；语义见 spec04「API 契约」3 + spec06 契约扩展 1） */
 export interface ItemsFilters {
   company?: string; // item_companies EXISTS
   category?: string; // items.category 精确匹配
   from?: string; // 日期闭区间下界
   to?: string; // 日期闭区间上界
   beforeDate?: string; // 不含该日，取更早期
+  q?: string; // 全文子串搜索：LIKE '%q%'（title/summary/body_md 三列 OR，通配符按字面）
   limit?: number; // 每页期数，默认 DEFAULT_PAGE_LIMIT
 }
 
@@ -44,6 +45,24 @@ function companyCategoryClauses(filters: ItemsFilters): WhereClause {
   return { sql, params };
 }
 
+// ---------- q 搜索子句（spec06 契约扩展 1）----------
+
+// LIKE 通配符 %/_ 与转义符 \ 本身按字面匹配：前缀 \ 转义 + SQL 端 ESCAPE '\'（spec06 转义钉死）。
+function escapeLikePattern(q: string): string {
+  return q.replace(/[\\%_]/g, "\\$&");
+}
+
+/** q 全文子串子句：title/summary/body_md 三列 LIKE '%q%'（OR）；pattern 整段经 bind 参数传入 */
+function qClause(filters: ItemsFilters): WhereClause {
+  if (filters.q === undefined || filters.q === "") return { sql: "", params: [] };
+  const pattern = `%${escapeLikePattern(filters.q)}%`;
+  return {
+    sql:
+      " AND (i.title LIKE ? ESCAPE '\\' OR i.summary LIKE ? ESCAPE '\\' OR i.body_md LIKE ? ESCAPE '\\')",
+    params: [pattern, pattern, pattern],
+  };
+}
+
 // ---------- 1. 期集合（/api/items 第一层） ----------
 
 /** 命中过滤的「期」日期列表：DISTINCT date，新→旧，LIMIT limit（默认 7） */
@@ -65,6 +84,9 @@ export function buildItemsDatesQuery(filters: ItemsFilters): SqlStatement {
   const cc = companyCategoryClauses(filters);
   where += cc.sql;
   params.push(...cc.params);
+  const qc = qClause(filters);
+  where += qc.sql;
+  params.push(...qc.params);
 
   const limit = filters.limit ?? DEFAULT_PAGE_LIMIT;
   return {
@@ -86,6 +108,7 @@ export function buildItemsForDatesQuery(dates: string[], filters: ItemsFilters):
   if (dates.length === 0) throw new Error("buildItemsForDatesQuery: dates 不能为空（调用方应短路）");
   const placeholders = dates.map(() => "?").join(",");
   const cc = companyCategoryClauses(filters);
+  const qc = qClause(filters);
   return {
     sql:
       "SELECT i.id, i.date, i.tag, i.sequence_int, i.category, i.title," +
@@ -93,8 +116,9 @@ export function buildItemsForDatesQuery(dates: string[], filters: ItemsFilters):
       " FROM items i" +
       ` WHERE i.date IN (${placeholders})` +
       cc.sql +
+      qc.sql +
       " ORDER BY i.date DESC, i.sequence_int ASC, i.id ASC",
-    params: [...dates, ...cc.params],
+    params: [...dates, ...cc.params, ...qc.params],
   };
 }
 

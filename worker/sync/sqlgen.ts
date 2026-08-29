@@ -70,6 +70,20 @@ export function companiesUpsertSql(companies: Company[]): string {
   );
 }
 
+// ---------- registry prune（spec06 契约扩展 3，ADR-0001 镜像删除语义补全）----------
+
+// registry 镜像删除：清掉不在 activeIds（当前 yaml registry id 集合）内的镜像行。
+// companies 先删（FK ON DELETE CASCADE 连带 item_companies），item_companies 按 company_id 再兜底删；
+// 两条 DELETE 均单语句单行（换行仅作语句分隔）；空数组 → 空串（无 registry 不清任何行）。
+export function companiesPruneSql(activeIds: string[]): string {
+  if (activeIds.length === 0) return "";
+  const ids = activeIds.map(quote).join(", ");
+  return (
+    `DELETE FROM companies WHERE id NOT IN (${ids});\n` +
+    `DELETE FROM item_companies WHERE company_id NOT IN (${ids});`
+  );
+}
+
 // ---------- item_companies / enrich_state（spec03）----------
 
 // 段一匹配结果写入：role 恒 NULL（ADR-0014 v1 单段）；冲突时以新 role 覆盖

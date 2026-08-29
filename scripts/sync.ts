@@ -1,5 +1,6 @@
 // sync — spec05 Step 3：手动增量同步 I/O 胶水（npm run sync）。
-// 流程：查 max(items.date) → fetch archive → selectSyncDates 窗口（worker/sync/pipeline.ts）
+// 流程：registry 镜像刷新（companiesUpsertSql(REGISTRY) + companiesPruneSql，spec06 契约扩展 3，每次运行）
+// → 查 max(items.date) → fetch archive → selectSyncDates 窗口（worker/sync/pipeline.ts）
 // → 并发 3 抓新期（单期重试 1 次）→ parseIssue → matchAll（读 D1 companies，worker/sync/match.ts）
 // → SQL 累积：sources/items/item_companies/enrich_state + 每期 syncLogUpsertSql(该期, 'ok', "")
 // → 临时 SQL 文件 → `wrangler d1 execute juya-daily --local --file` → 删除 → counts + sync_log 尾部打印。
@@ -10,12 +11,15 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { REGISTRY } from "../src/lib/registry.generated";
 import type { Company, Item } from "../src/lib/schema";
 import { parseArchiveDates } from "../worker/sync/archive";
 import { matchAll } from "../worker/sync/match";
 import { parseIssue } from "../worker/sync/parse";
 import { selectSyncDates } from "../worker/sync/pipeline";
 import {
+  companiesPruneSql,
+  companiesUpsertSql,
   enrichStateUpdateSql,
   itemCompaniesUpsertSql,
   itemsUpsertSql,
@@ -142,6 +146,24 @@ interface Counts {
   item_companies: number;
 }
 
+// SQL 累积 → 临时文件 → wrangler d1 execute --local --file → 删除（成功失败均清理，.wrangler gitignored）。
+// 失败不抛出：置退出码后由调用方继续（counts 打印 / 后续步骤），退出码语义同 backfill。
+function executeSqlFile(statements: string[], label: string): void {
+  mkdirSync(path.join(ROOT, ".wrangler"), { recursive: true });
+  const tmpPath = path.join(ROOT, ".wrangler", `tmp-sync-${label}-${Date.now()}.sql`);
+  writeFileSync(tmpPath, statements.filter((s) => s !== "").join("\n") + "\n", "utf8");
+  console.log(`SQL 文件: ${path.relative(ROOT, tmpPath)}（${label}，${statements.length} 条语句）`);
+  const r = runWrangler(["d1", "execute", DB, "--local", "--file", path.relative(ROOT, tmpPath)]);
+  rmSync(tmpPath, { force: true });
+  if (!r.ok) {
+    console.error("SQL 执行失败：");
+    console.error(r.stderr.split(/\r?\n/).slice(-8).join("\n"));
+    process.exitCode = 1;
+  } else {
+    console.log("SQL 执行成功");
+  }
+}
+
 function queryCounts(): Counts {
   const sql =
     "SELECT (SELECT COUNT(*) FROM sources) AS sources, " +
@@ -198,6 +220,12 @@ async function main(): Promise<void> {
   console.log(`== sync 开始（${new Date().toISOString()}，全程 --local 零登录）`);
   console.log(`vars: ARCHIVE_URL=${ARCHIVE_URL} MD_BASE=${MD_BASE} SYNC_LOOKBACK_DAYS=${LOOKBACK_DAYS}`);
 
+  // 0) registry 镜像刷新（spec06 契约扩展 3 + A4）：upsert 当前 yaml registry → prune 已移除 id。
+  //    每次运行都执行（无窗口期亦然）；先于 companies 读取，保证本次匹配读到的是当前镜像。
+  const registryIds = REGISTRY.map((c) => c.id);
+  console.log(`registry 镜像刷新: upsert ${REGISTRY.length} 家 + prune（activeIds ${registryIds.length}）`);
+  executeSqlFile([companiesUpsertSql(REGISTRY), companiesPruneSql(registryIds)], "mirror");
+
   // 1) 确定窗口期次：--dates 强制 / max(items.date) + lookback 窗口
   let dates: string[];
   if (datesArg !== null) {
@@ -247,20 +275,7 @@ async function main(): Promise<void> {
     }
 
     // 5) 临时 SQL 文件 → wrangler d1 execute --local --file → 删除
-    mkdirSync(path.join(ROOT, ".wrangler"), { recursive: true });
-    const tmpPath = path.join(ROOT, ".wrangler", `tmp-sync-${Date.now()}.sql`);
-    writeFileSync(tmpPath, statements.filter((s) => s !== "").join("\n") + "\n", "utf8");
-    console.log(`SQL 文件: ${path.relative(ROOT, tmpPath)}（${statements.length} 期）`);
-
-    const r = runWrangler(["d1", "execute", DB, "--local", "--file", path.relative(ROOT, tmpPath)]);
-    rmSync(tmpPath, { force: true }); // 成功失败均清理（.wrangler gitignored）
-    if (!r.ok) {
-      console.error("SQL 执行失败：");
-      console.error(r.stderr.split(/\r?\n/).slice(-8).join("\n"));
-      process.exitCode = 1;
-    } else {
-      console.log("SQL 执行成功");
-    }
+    executeSqlFile(statements, "data");
   }
 
   // 6) counts + sync_log 尾部打印

@@ -1,9 +1,23 @@
-// read API 路由分发（spec04 A4）：5 端点 + 统一错误格式 + caches.default 包装。
-// 契约（spec04「API 契约」节，逐字段为准）：
-// - 错误统一 { error: { code, message } }（400 invalid_param / 404 daily_not_found|company_not_found|not_found / 405 method_not_allowed / 500 internal_error）
-// - 成功响应（200）带 Cache-Control: public, max-age=60 并写入 caches.default（本地近似 no-op，读写失败不阻塞正确性）
+// read API 路由分发（spec04 A4）：5 端点 + POST /api/sync（spec06 契约扩展 2）+ 统一错误格式 + caches.default 包装。
+// 契约（spec04「API 契约」节 + spec06「契约扩展」节，逐字段为准）：
+// - 错误统一 { error: { code, message } }（400 invalid_param / 403 unauthorized / 404 daily_not_found|company_not_found|not_found / 405 method_not_allowed / 500 internal_error|sync_failed）
+// - 成功响应（200）带 Cache-Control: public, max-age=60 并写入 caches.default（本地近似 no-op，读写失败不阻塞正确性）；POST /api/sync 不走缓存
 // - 本文件属 Worker fetch 层，按 ADR-0011 不做 vitest，以 wrangler dev + curl 验收
+import { REGISTRY } from "../../src/lib/registry.generated";
 import { parseMarkdown } from "../../src/lib/juya";
+import type { Company, Item } from "../../src/lib/schema";
+import { parseArchiveDates } from "../sync/archive";
+import { matchAll } from "../sync/match";
+import { parseIssue } from "../sync/parse";
+import { selectSyncDates } from "../sync/pipeline";
+import {
+  companiesPruneSql,
+  enrichStateUpdateSql,
+  itemCompaniesUpsertSql,
+  itemsUpsertSql,
+  sourcesUpsertSql,
+  syncLogUpsertSql,
+} from "../sync/sqlgen";
 import {
   DEFAULT_PAGE_LIMIT,
   MAX_BOUND_PARAMS,
@@ -18,6 +32,12 @@ import {
 
 export interface Env {
   DB: D1Database;
+  // 同步端点 vars（与 wrangler.jsonc vars 对齐；缺省走 spec 默认值）；SYNC_TOKEN 为可选 secret——
+  // 非空时要求请求头 x-sync-token 相等，否则 403；未设置（本地 .dev.vars 不配）则开放（spec06 契约扩展 2）
+  ARCHIVE_URL?: string;
+  MD_BASE?: string;
+  SYNC_LOOKBACK_DAYS?: string;
+  SYNC_TOKEN?: string;
 }
 
 const RE_DATE = /^\d{4}-\d{2}-\d{2}$/; // YYYY-MM-DD（格式级校验，历法合法性交给 D1 匹配结果）
@@ -84,6 +104,7 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     if (pathname === "/api/daily/latest") return await methodGuardGet(request, () => dailyLatest(env));
     if (pathname === "/api/items") return await methodGuardGet(request, () => listItems(url, env));
     if (pathname === "/api/companies") return await methodGuardGet(request, () => companiesIndex(env));
+    if (pathname === "/api/sync") return await syncRoute(request, env);
 
     const dailyDate = matchPrefix(pathname, "/api/daily/");
     if (dailyDate !== null) {
@@ -222,6 +243,7 @@ async function listItems(url: URL, env: Env): Promise<Response> {
     from: requireDateParam(optParam(sp, "from"), "from"),
     to: requireDateParam(optParam(sp, "to"), "to"),
     beforeDate: requireDateParam(optParam(sp, "before_date"), "before_date"),
+    q: optParam(sp, "q"), // spec06 契约扩展 1：与 facet 可组合，进两层查询
     limit: parseLimit(sp.get("limit")),
   };
 
@@ -379,6 +401,167 @@ async function companyProfile(companyId: string, env: Env): Promise<Response> {
       timeSpan: { earliest: stats.earliest ?? null, latest: stats.latest ?? null },
     },
   });
+}
+
+// ---------- 端点 6：POST /api/sync（spec06 契约扩展 2，ADR-0013 端点化）----------
+
+// 与 scripts/sync.ts 同一纯函数与 SQL 生成（selectSyncDates / parseIssue / matchAll / sqlgen 全家）；
+// I/O 差异仅两处：D1 读写经 binding（全字面量 SQL 经 prepare+batch 执行，无绑定参数），抓取走 Worker 原生 fetch。
+// 增量窗口通常 ≤4 期（SYNC_LOOKBACK_DAYS 默认 3）；全量场景由 backfill 承担——端点不提供全量模式。
+// 单期容错同脚本：失败期仅 sync_log（fetch_failed/parse_failed），不阻塞后续期（ADR-0008）。
+// 每次运行批尾执行 companiesPruneSql（registry 镜像删除语义，ADR-0001）。
+
+const SYNC_CONCURRENCY = 3; // 与 scripts/sync.ts 同值：并发抓取
+const SYNC_FETCH_TIMEOUT_MS = 30_000;
+const DEFAULT_ARCHIVE_URL = "https://daily.juya.uk/archive/";
+const DEFAULT_MD_BASE = "https://daily.juya.uk/markdown";
+
+type IssueOutcome =
+  | { date: string; ok: true; parsedDate: string; markdown: string; items: Item[] }
+  | { date: string; ok: false; status: "fetch_failed" | "parse_failed"; error: string };
+
+function syncVars(env: Env): { archiveUrl: string; mdBase: string; lookbackDays: number } {
+  const lookbackRaw = Number(env.SYNC_LOOKBACK_DAYS ?? "3");
+  return {
+    archiveUrl: env.ARCHIVE_URL ?? DEFAULT_ARCHIVE_URL,
+    mdBase: env.MD_BASE ?? DEFAULT_MD_BASE,
+    lookbackDays: Number.isFinite(lookbackRaw) && lookbackRaw >= 0 ? lookbackRaw : 3,
+  };
+}
+
+async function fetchText(url: string): Promise<string> {
+  const res = await fetch(url, {
+    headers: { "user-agent": "juya-daily-sync/1.0 (worker incremental sync; zero-login)" },
+    signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
+  return res.text();
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+// 固定并发池（与 scripts/sync.ts 同构）：按 next++ 依序领取，结果按下标回填，保持与输入同序。
+async function mapPool<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+// fetch 失败重试 1 次；parse 失败是确定性失败不重试（同一输入必然同样抛错，同 scripts/sync.ts）。
+async function fetchOneIssue(date: string, mdBase: string): Promise<IssueOutcome> {
+  let lastFetchError = "";
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const markdown = await fetchText(`${mdBase}/${date}.md`);
+      try {
+        const parsed = parseIssue(markdown); // 无日期标题 → 抛错
+        return { date, ok: true, parsedDate: parsed.date, markdown, items: parsed.items };
+      } catch (err) {
+        return { date, ok: false, status: "parse_failed", error: err instanceof Error ? err.message : String(err) };
+      }
+    } catch (err) {
+      lastFetchError = err instanceof Error ? err.message : String(err);
+      if (attempt === 1) await sleep(800);
+    }
+  }
+  return { date, ok: false, status: "fetch_failed", error: lastFetchError };
+}
+
+interface SyncCompanyRow {
+  id: string;
+  name: string;
+  aliases: string; // JSON 数组字面量
+  color: string;
+  status: string;
+  notes: string;
+}
+
+async function syncNow(env: Env): Promise<Response> {
+  try {
+    const { archiveUrl, mdBase, lookbackDays } = syncVars(env);
+
+    // 1) 窗口：max(items.date)（经 binding）→ archive 期列表 → selectSyncDates（pipeline 纯函数）
+    const maxRow = await env.DB.prepare("SELECT MAX(date) AS m FROM items").first<{ m: string | null }>();
+    const archiveDates = parseArchiveDates(await fetchText(archiveUrl));
+    if (archiveDates.length === 0) {
+      throw new HttpError(500, "sync_failed", "archive 页未解析到任何期日期");
+    }
+    const dates = selectSyncDates(archiveDates, maxRow?.m ?? null, lookbackDays);
+
+    // 2) companies 镜像（经 binding 读）→ 段一匹配 registry（同 scripts/sync.ts / match-all）
+    const companyRows = await env.DB.prepare(
+      "SELECT id, name, aliases, color, status, notes FROM companies ORDER BY id",
+    ).all<SyncCompanyRow>();
+    const registry: Company[] = companyRows.results.map((c) => ({
+      id: c.id,
+      name: c.name,
+      aliases: JSON.parse(c.aliases) as string[],
+      color: c.color,
+      status: c.status as Company["status"],
+      notes: c.notes,
+    }));
+
+    // 3) 并发抓取 + 解析 + SQL 累积（成功期五件套；失败期仅 sync_log）
+    // batch 的每个元素须恰为一条完整语句：enrichStateUpdateSql / companiesPruneSql 产物是
+    // 「单语句单行 × N」以 \n 连接，按 \n 拆分安全；其余生成器各为单语句，
+    // 字面量内换行（markdown 正文）随语句整体交给 prepare 引号感知解析。
+    const synced: string[] = [];
+    const failures: { date: string; error: string }[] = [];
+    const statements: string[] = [];
+    const outcomes = await mapPool(dates, SYNC_CONCURRENCY, (d) => fetchOneIssue(d, mdBase));
+    for (const o of outcomes) {
+      if (!o.ok) {
+        failures.push({ date: o.date, error: o.error });
+        statements.push(syncLogUpsertSql(o.date, o.status, o.error));
+        continue;
+      }
+      const { ownerRows, okIds, missingIds } = matchAll(o.items, registry);
+      statements.push(
+        sourcesUpsertSql(o.parsedDate, o.markdown),
+        itemsUpsertSql(o.items),
+        itemCompaniesUpsertSql(ownerRows),
+        ...enrichStateUpdateSql(okIds, missingIds).split("\n").filter((s) => s !== ""),
+        syncLogUpsertSql(o.date, "ok", ""),
+      );
+      synced.push(o.date);
+    }
+    // registry 镜像 prune 每次运行都执行（spec06 契约扩展 3），置于批尾
+    statements.push(...companiesPruneSql(REGISTRY.map((c) => c.id)).split("\n").filter((s) => s !== ""));
+
+    // 4) 全字面量 SQL 经 binding 执行（无绑定参数）。注意不用 env.DB.exec——它按裸换行拆分语句，
+    // 会把 markdown 字面量内的换行误判为语句边界（实测 D1_EXEC_ERROR）；prepare 引号感知解析完整语句，
+    // batch 保序执行（隐式事务，部分失败整体回滚）。
+    const batch = statements.filter((s) => s !== "").map((s) => env.DB.prepare(s));
+    if (batch.length > 0) await env.DB.batch(batch);
+
+    // 响应契约：ok = 窗口内全部成功；dates = 实际写入的期（成功期，升序 = 执行序）；
+    // failures = 失败期与错误消息（与 dates 一起划分整个窗口）
+    return jsonOk({ ok: failures.length === 0, dates: synced, failures });
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    throw new HttpError(500, "sync_failed", err instanceof Error ? err.message : String(err));
+  }
+}
+
+/** 守卫：SYNC_TOKEN 非空时要求 x-sync-token 相等，否则 403 unauthorized；未设置则开放 */
+function syncRoute(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") {
+    return Promise.resolve(
+      jsonError(405, "method_not_allowed", `仅支持 POST（实际 ${request.method}）`, { Allow: "POST" })
+    );
+  }
+  const token = env.SYNC_TOKEN;
+  if (token !== undefined && token !== "" && request.headers.get("x-sync-token") !== token) {
+    return Promise.resolve(jsonError(403, "unauthorized", "缺少或错误的 x-sync-token 请求头"));
+  }
+  return syncNow(env);
 }
 
 // ---------- 工具 ----------

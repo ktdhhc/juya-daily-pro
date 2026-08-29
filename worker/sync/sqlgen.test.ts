@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { Company, Item } from "../../src/lib/schema";
 import {
+  companiesPruneSql,
   companiesUpsertSql,
   enrichStateUpdateSql,
   escapeSqlText,
@@ -192,6 +193,30 @@ describe("companiesUpsertSql", () => {
 
   it("空数组 → 空串", () => {
     expect(companiesUpsertSql([])).toBe("");
+  });
+});
+
+// ---------- companiesPruneSql（spec06 契约扩展 3，ADR-0001 镜像删除语义）----------
+
+describe("companiesPruneSql", () => {
+  it("两条 DELETE：companies 先、item_companies 后，NOT IN 字面量列表，各单语句单行 ; 收尾", () => {
+    const sql = companiesPruneSql(["zhipu", "deepseek", "bytedance"]);
+    const lines = sql.split("\n");
+    expect(lines).toEqual([
+      "DELETE FROM companies WHERE id NOT IN ('zhipu', 'deepseek', 'bytedance');",
+      "DELETE FROM item_companies WHERE company_id NOT IN ('zhipu', 'deepseek', 'bytedance');",
+    ]);
+    for (const line of lines) expectDiscipline(line);
+  });
+
+  it("空数组 → 空串（无 activeIds 不清任何行）", () => {
+    expect(companiesPruneSql([])).toBe("");
+  });
+
+  it("id 含单引号 → 字面量翻倍转义", () => {
+    const sql = companiesPruneSql(["it's"]);
+    expect(sql).toContain("'it''s'");
+    for (const line of sql.split("\n")) expectDiscipline(line);
   });
 });
 

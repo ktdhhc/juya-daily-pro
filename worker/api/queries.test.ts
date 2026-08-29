@@ -83,6 +83,80 @@ describe("buildItemsDatesQuery（期集合）", () => {
   });
 });
 
+// ---------- q 搜索参数（spec06 契约扩展 1）----------
+
+describe("q 搜索参数（LIKE '%q%'，title/summary/body_md 三列 OR）", () => {
+  it("dates 查询：三列 LIKE ? ESCAPE '\\'，pattern 前后加 %，参数在 limit 之前且不拼进 SQL", () => {
+    const q = buildItemsDatesQuery({ q: "Claude" });
+    expect(q.sql).toContain(
+      "(i.title LIKE ? ESCAPE '\\' OR i.summary LIKE ? ESCAPE '\\' OR i.body_md LIKE ? ESCAPE '\\')",
+    );
+    expect(q.params).toEqual(["%Claude%", "%Claude%", "%Claude%", 7]);
+    expect(q.sql).not.toContain("Claude"); // pattern 只进参数，绝不拼进 SQL
+    expectConsistent(q);
+  });
+
+  it("for-dates 查询：q 子句与 pattern 参数附在 category/company 之后", () => {
+    const dates = ["2026-08-27", "2026-08-26"];
+    const q = buildItemsForDatesQuery(dates, { q: "GLM", company: "zhipu", category: "模型发布" });
+    expect(q.sql).toContain("LIKE ? ESCAPE '\\'");
+    expect(q.params).toEqual([
+      ...dates,
+      "模型发布",
+      "zhipu",
+      "%GLM%",
+      "%GLM%",
+      "%GLM%",
+    ]);
+    expectConsistent(q);
+  });
+
+  it("LIKE 通配符按字面匹配：%/_/\\ 前缀反斜杠转义（配合 ESCAPE '\\'）", () => {
+    expect(buildItemsDatesQuery({ q: "50%" }).params[0]).toBe("%50\\%%"); // %50\%%
+    expect(buildItemsDatesQuery({ q: "a_b" }).params[0]).toBe("%a\\_b%"); // %a\_b%
+    expect(buildItemsDatesQuery({ q: "c\\d" }).params[0]).toBe("%c\\\\d%"); // %c\\d%
+    expect(buildItemsDatesQuery({ q: "100%_ok" }).params[0]).toBe("%100\\%\\_ok%");
+  });
+
+  it("与 facet 全组合：参数顺序 = beforeDate, from, to, category, company, q×3, limit", () => {
+    const f: ItemsFilters = {
+      company: "openai",
+      category: "模型发布",
+      from: "2026-06-01",
+      to: "2026-08-27",
+      beforeDate: "2026-08-28",
+      q: "agent",
+      limit: 3,
+    };
+    const stmt = buildItemsDatesQuery(f);
+    expect(stmt.params).toEqual([
+      "2026-08-28",
+      "2026-06-01",
+      "2026-08-27",
+      "模型发布",
+      "openai",
+      "%agent%",
+      "%agent%",
+      "%agent%",
+      3,
+    ]);
+    expectConsistent(stmt);
+  });
+
+  it("q 缺省/空串 → 无 LIKE 子句、参数不变（与既有形态完全一致）", () => {
+    expect(buildItemsDatesQuery({}).sql).not.toContain("LIKE");
+    expect(buildItemsDatesQuery({ q: "" }).params).toEqual([7]);
+    expect(buildItemsForDatesQuery(["2026-08-27"], { q: "" }).sql).not.toContain("LIKE");
+  });
+
+  it("注入安全：恶意 q（含引号/分号）只进 params", () => {
+    const stmt = buildItemsDatesQuery({ q: EVIL });
+    expect(stmt.sql).not.toContain("DROP TABLE");
+    expect(stmt.params).toContain(`%${EVIL}%`);
+    expectConsistent(stmt);
+  });
+});
+
 describe("buildItemsForDatesQuery（期内条目）", () => {
   const dates = ["2026-08-27", "2026-08-26", "2026-08-25"];
 

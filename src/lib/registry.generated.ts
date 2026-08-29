@@ -62,6 +62,7 @@ export const REGISTRY: Company[] = [
       "千问AI平台",
       "灵骏",
       "ModelScope",
+      "HappyOyster",
       "通义"
     ],
     "color": "#FF6A00",
