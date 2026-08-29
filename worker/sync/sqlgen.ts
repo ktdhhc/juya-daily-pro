@@ -86,15 +86,23 @@ export function companiesPruneSql(activeIds: string[]): string {
 
 // ---------- item_companies / enrich_state（spec03）----------
 
-// 段一匹配结果写入：role 恒 NULL（ADR-0014 v1 单段）；冲突时以新 role 覆盖
-// （当前恒 NULL，未来 LLM enrich 回填复用同一语句）。
-export function itemCompaniesUpsertSql(rows: { itemId: string; companyId: string }[]): string {
+// 段一匹配结果写入：role 缺省/null → NULL（同步路径向后兼容，ADR-0014 v1 单段）；
+// 可选携带 role（spec09 2.2 enrich 回写："primary"/"partner"/"subject"）。
+// DO UPDATE 用 COALESCE(excluded.role, item_companies.role) 防清摆：同步路径传 NULL
+// 不会清掉 enrich 已写的 role；enrich 回写非空 role 时覆盖旧值。
+export function itemCompaniesUpsertSql(
+  rows: { itemId: string; companyId: string; role?: "primary" | "partner" | "subject" | null }[],
+): string {
   if (rows.length === 0) return "";
-  const values = rows.map((r) => `(${quote(r.itemId)}, ${quote(r.companyId)}, NULL)`);
+  const values = rows.map((r) => {
+    const role = r.role === undefined || r.role === null ? "NULL" : quote(r.role);
+    return `(${quote(r.itemId)}, ${quote(r.companyId)}, ${role})`;
+  });
   return (
     "INSERT INTO item_companies (item_id, company_id, role) " +
     `VALUES ${values.join(", ")} ` +
-    "ON CONFLICT(item_id, company_id) DO UPDATE SET role = excluded.role;"
+    "ON CONFLICT(item_id, company_id) DO UPDATE SET " +
+    "role = COALESCE(excluded.role, item_companies.role);"
   );
 }
 

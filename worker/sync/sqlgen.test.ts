@@ -220,17 +220,39 @@ describe("companiesPruneSql", () => {
   });
 });
 
-// ---------- itemCompaniesUpsertSql（spec03 Step 2）----------
+// ---------- itemCompaniesUpsertSql（spec03 Step 2；spec09 2.2 扩展 role + COALESCE 防清摆）----------
 
 describe("itemCompaniesUpsertSql", () => {
-  it("role 恒 NULL（裸 NULL）+ ON CONFLICT(item_id, company_id) DO UPDATE SET role，; 收尾单语句", () => {
+  it("语义一·插入 NULL：role 缺省（同步路径向后兼容）→ VALUES 裸 NULL，; 收尾单语句", () => {
     const sql = itemCompaniesUpsertSql([{ itemId: "20260827-1", companyId: "anthropic" }]);
     expect(sql).toBe(
       "INSERT INTO item_companies (item_id, company_id, role) " +
         "VALUES ('20260827-1', 'anthropic', NULL) " +
-        "ON CONFLICT(item_id, company_id) DO UPDATE SET role = excluded.role;",
+        "ON CONFLICT(item_id, company_id) DO UPDATE SET " +
+        "role = COALESCE(excluded.role, item_companies.role);",
     );
     expect(sql).not.toContain("'NULL'"); // role 是裸 NULL，非字符串
+    expectDiscipline(sql);
+  });
+
+  it("语义二·更新保留旧 role：excluded.role 为 NULL（显式 null 与缺省等价）→ COALESCE 落回 item_companies.role，同步不清掉 enrich 已写 role", () => {
+    const sql = itemCompaniesUpsertSql([
+      { itemId: "it'1", companyId: "L'Oréal", role: null },
+    ]);
+    expect(sql).toContain("'it''1', 'L''Oréal', NULL");
+    expect(sql).toMatch(/DO UPDATE SET role = COALESCE\(excluded\.role, item_companies\.role\);$/);
+    expectDiscipline(sql);
+  });
+
+  it("语义三·新 role 覆盖旧 role：excluded.role 非空（enrich 回写）→ 覆盖 item_companies.role", () => {
+    const sql = itemCompaniesUpsertSql([
+      { itemId: "20260829-1", companyId: "tencent", role: "primary" },
+      { itemId: "20260829-1", companyId: "moonshot", role: "subject" },
+    ]);
+    expect(sql).toContain("'tencent', 'primary'");
+    expect(sql).toContain("'moonshot', 'subject'");
+    // excluded.role 在 COALESCE 首位：非空即覆盖
+    expect(sql).toContain("role = COALESCE(excluded.role, item_companies.role)");
     expectDiscipline(sql);
   });
 

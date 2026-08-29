@@ -14,6 +14,7 @@
     "logos:fetch": "tsx scripts/fetch-logos.ts",
     "backfill": "tsx scripts/backfill.ts",
     "match:all": "tsx scripts/match-all.ts",
+    "enrich": "tsx scripts/enrich.ts",
     "sync": "tsx scripts/sync.ts"
   },
   "keywords": [],
