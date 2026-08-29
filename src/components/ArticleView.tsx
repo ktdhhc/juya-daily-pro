@@ -67,6 +67,9 @@ function preprocessRelatedLinks(md: string): string {
 
 const mdComponents: Components = {
   h2: ({ children }) => <ArticleH2>{children}</ArticleH2>,
+  // 条目标题是 ###（h3）且带 `#N`——锚点 id（article-N）必须挂在这里，ItemCard 的
+  // 看原期链接与阅读页 TOC 都依赖它（spec06 C 线修复：此前 h3 无 id，锚点全部落空）。
+  h3: ({ children }) => <ArticleH2>{children}</ArticleH2>,
   pre: ({ children }) => {
     // Render related-links code blocks as a compact card
     const child = children as unknown as { props?: { className?: string; children?: string } } | null;
@@ -89,16 +92,18 @@ const mdComponents: Components = {
   },
 };
 
-function scrollToId(id: string, container?: HTMLElement | null) {
+/** 滚动到条目锚点（h3 id = article-N）；元素不存在静默不动。DailyPage 消费 location.hash 时复用（spec06 B1）。
+ * behavior：站内点击用默认 smooth；深链锚点落位传 "auto" 瞬时（原生 #锚点语义，且不依赖运行环境的 smooth 动画） */
+export function scrollToId(id: string, container?: HTMLElement | null, behavior: ScrollBehavior = "smooth") {
   const el = document.getElementById(id);
   if (!el) return;
   if (container) {
     const containerRect = container.getBoundingClientRect();
     const elRect = el.getBoundingClientRect();
     const offset = elRect.top - containerRect.top + container.scrollTop - 16;
-    container.scrollTo({ top: offset, behavior: "smooth" });
+    container.scrollTo({ top: offset, behavior: behavior });
   } else {
-    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    el.scrollIntoView({ behavior: behavior, block: "start" });
   }
 }
 

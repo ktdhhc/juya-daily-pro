@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { DailyEntry, ParsedDaily, parseMarkdown, MD_BASE } from "@/lib/juya";
 import { Header } from "./Header";
 import { DatePicker } from "./DatePicker";
-import { ArticleView } from "./ArticleView";
+import { ArticleView, scrollToId } from "./ArticleView";
 
 interface Props {
   entries: DailyEntry[];
@@ -80,12 +80,23 @@ export function DailyPage({
   useEffect(() => {
     if (!initialDate) return;
     setCurrentDate(initialDate);
-    // 首次加载也把日期写进地址栏，方便直接复制分享
+    // 首次加载也把日期写进地址栏，方便直接复制分享（保留 hash 锚点，spec06 B1）
     const params = new URLSearchParams(window.location.search);
     if (!params.get("date")) {
-      window.history.replaceState({ date: initialDate }, "", `${window.location.pathname}?date=${initialDate}`);
+      window.history.replaceState({ date: initialDate }, "", `${window.location.pathname}?date=${initialDate}${window.location.hash}`);
     }
   }, [initialDate]);
+
+  // 锚点消费（spec06 B1）：数据就绪后的 commit 里 h3 已在 DOM，读 location.hash（#article-N）
+  // 滚到对应条目；覆盖 initialData 到达与 handleSelect 完成（popstate 带锚点返回）两条路径，
+  // 滚动逻辑复用 ArticleView 的 scrollToId——元素不存在（当日无该编号）静默留顶部。
+  // 深链落位用 "auto" 瞬时：原生 #锚点语义，不依赖运行环境的 smooth 动画（IAB 内 smooth 被吞，spec06 C 线实测）
+  useEffect(() => {
+    if (!data) return;
+    const m = /^#article-(\d+)$/.exec(window.location.hash);
+    if (!m) return;
+    scrollToId(`article-${m[1]}`, mainRef.current, "auto");
+  }, [data, issueId]);
 
   const handleSelect = useCallback(async (entry: DailyEntry, updateUrl = true) => {
     setLoading(true);

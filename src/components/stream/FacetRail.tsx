@@ -3,15 +3,17 @@
 import { CompanyIndexEntry } from "@/lib/api";
 import { CATEGORIES } from "@/lib/stream-categories";
 
-/** /stream facet 状态（company/category/from/to；before_date 分页位不在此列，不进 URL——ADR-0012） */
+/** /stream facet 状态（company/category/from/to/query；before_date 分页位不在此列，不进 URL——ADR-0012）。
+ *  query = 报头搜索词（URL 用 ?query=，API 映射为 q，spec06 契约扩展 1）；入口在报头，此处仅承载同步与 chip */
 export interface Facets {
   company: string;
   category: string;
+  query: string;
   from: string;
   to: string;
 }
 
-export const EMPTY_FACETS: Facets = { company: "", category: "", from: "", to: "" };
+export const EMPTY_FACETS: Facets = { company: "", category: "", query: "", from: "", to: "" };
 
 interface Props {
   facets: Facets;

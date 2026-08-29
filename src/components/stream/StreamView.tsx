@@ -21,6 +21,7 @@ function readFacetsFromUrl(): Facets {
   return {
     company: p.get("company") || "",
     category: p.get("category") || "",
+    query: p.get("query") || "",
     from: p.get("from") || "",
     to: p.get("to") || "",
   };
@@ -30,6 +31,7 @@ function facetsToSearchParams(f: Facets): URLSearchParams {
   const p = new URLSearchParams();
   if (f.company) p.set("company", f.company);
   if (f.category) p.set("category", f.category);
+  if (f.query) p.set("query", f.query);
   if (f.from) p.set("from", f.from);
   if (f.to) p.set("to", f.to);
   return p;
@@ -208,6 +210,7 @@ export function StreamView() {
     if (facets.company)
       chips.push({ key: "company", label: companyNameById.get(facets.company) || facets.company });
     if (facets.category) chips.push({ key: "category", label: facets.category });
+    if (facets.query) chips.push({ key: "query", label: `「${facets.query}」` });
     if (facets.from || facets.to)
       chips.push({ key: "from", label: `${facets.from || "…"} ~ ${facets.to || "今"}` });
     return chips;
@@ -223,7 +226,8 @@ export function StreamView() {
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
-      <Header active="stream" />
+      {/* 报头搜索词并入 facet 双向同步（spec06 B3）：覆盖式写 query，保留既有 facet，进 URL 可分享 */}
+      <Header active="stream" onSearch={(term) => applyFacets({ ...facets, query: term }, true)} />
 
       {activeChips.length > 0 && (
         <div className="w-full max-w-6xl mx-auto px-5 pt-4 flex flex-wrap items-center gap-2">
@@ -261,9 +265,11 @@ export function StreamView() {
             <EmptyState
               phrase="未有所获"
               description={
-                activeChips.length > 0
-                  ? "所选切面下没有条目，试试放宽筛选或换一个时间范围。"
-                  : "最近还没有条目入库，稍后再来看看。"
+                facets.query
+                  ? `没有匹配「${facets.query}」的条目，换个关键词或放宽筛选试试。`
+                  : activeChips.length > 0
+                    ? "所选切面下没有条目，试试放宽筛选或换一个时间范围。"
+                    : "最近还没有条目入库，稍后再来看看。"
               }
               actionLabel={activeChips.length > 0 ? "清除筛选" : undefined}
               onAction={activeChips.length > 0 ? clearAll : undefined}

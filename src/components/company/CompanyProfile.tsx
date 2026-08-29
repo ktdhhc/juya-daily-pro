@@ -1,20 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Header } from "../Header";
 import { EmptyState } from "../common/EmptyState";
 import { ItemCard } from "../stream/ItemCard";
+import { LogoSeal } from "../common/LogoSeal";
 import { apiFetch, ApiError, CompanyProfileResponse, ItemsPage, StreamItem, itemsQueryString } from "@/lib/api";
 
 const PAGE_SIZE = 7;
 
 type ProfileStatus = "loading" | "ready" | "error" | "notfound";
 type ItemsStatus = "loading" | "ready" | "empty" | "error";
-
-function sealStyle(color: string, size: number, fontSize: number): CSSProperties {
-  return { "--seal": color, width: size, height: size, fontSize } as CSSProperties;
-}
 
 function Stat({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
@@ -216,9 +213,7 @@ export function CompanyProfile({ id }: { id: string }) {
             <header>
               {/* 块 1 · 基础：印 + 名 + notes + aliases */}
               <div className="flex items-start gap-4">
-                <span className="seal shrink-0" style={sealStyle(profile.company.color, 52, 26)} aria-hidden>
-                  {profile.company.name.charAt(0)}
-                </span>
+                <LogoSeal id={profile.company.id} name={profile.company.name} color={profile.company.color} size={52} fontSize={26} ariaHidden />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-3 flex-wrap">
                     <h1 className="hero-title text-3xl font-bold leading-tight">{profile.company.name}</h1>
@@ -296,9 +291,15 @@ export function CompanyProfile({ id }: { id: string }) {
                   <div className="mt-3.5 flex flex-wrap gap-x-5 gap-y-2.5">
                     {profile.stats.coworkers.map((cw) => (
                       <Link key={cw.companyId} href={`/company/${cw.companyId}`} className="flex items-center gap-2 no-underline">
-                        <span className="seal" style={sealStyle(cw.color, 20, 11)} data-tip={`${cw.name} · 同条目 ${cw.count} 次`} aria-hidden>
-                          {cw.name.charAt(0)}
-                        </span>
+                        <LogoSeal
+                          id={cw.companyId}
+                          name={cw.name}
+                          color={cw.color}
+                          size={20}
+                          fontSize={11}
+                          dataTip={`${cw.name} · 同条目 ${cw.count} 次`}
+                          ariaHidden
+                        />
                         <span className="text-xs" style={{ color: "var(--fg-light)" }}>
                           {cw.name}
                         </span>

@@ -104,6 +104,12 @@
 
 - 竖排短语（「无如是期」/「未有所获」）+ 一行说明；重试为下划线文字链，focus ring 精确；无插画无 emoji。
 
+### 4.7 公司 Logo 印（§4.2/§4.4 钤印的素材升级，非形态变更）
+
+- 钤印仍是方形 chip（2px 微圆角与尺寸体系沿用 `.seal`）：命中真实 logo 时（`LogoSeal`）渲染 `object-contain` 的 `<img>`——纸底（`--bg`）+ 1px 细边（`--rule`）+ 内边距，logo 不顶边。
+- 无 logo、或 img 加载失败（onerror）的公司回退现有首字方印（实心/描边语义不变）。
+- 素材离线拉取至 `public/logos/`（`npm run logos:fetch`，映射在 `src/lib/logos.generated.ts`），运行时不请求第三方；品牌「橘」方印（§4.1）不参与，仍是站点自己的标。
+
 ## 5. 动效规则
 
 | 场景 | 规格 |

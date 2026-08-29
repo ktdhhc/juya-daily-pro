@@ -1,16 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Header } from "../Header";
 import { EmptyState } from "../common/EmptyState";
+import { LogoSeal } from "../common/LogoSeal";
 import { apiFetch, ApiError, CompanyIndexEntry } from "@/lib/api";
 
 const STATUS_MARK: Record<string, string> = { dormant: "休", retired: "退" };
 
-function sealStyle(color: string, size: number, fontSize: number): CSSProperties {
-  return { "--seal": color, width: size, height: size, fontSize } as CSSProperties;
-}
+/** 默认只渲染条目数前 12 家，其余折叠进「其他 N 家」（spec06 B2，检索时自动全开） */
+const TOP_N = 12;
 
 function IndexSkeleton() {
   return (
@@ -31,12 +31,52 @@ function IndexSkeleton() {
   );
 }
 
+/** 印章卡片单元（top 区与折叠区同款，细线分格网格 FRONTEND_DESIGN §2「印」） */
+function SealCell({ c }: { c: CompanyIndexEntry }) {
+  return (
+    <Link href={`/company/${c.id}`} className="seal-cell">
+      <div className="flex items-center gap-3">
+        <LogoSeal id={c.id} name={c.name} color={c.color} size={30} fontSize={16} ariaHidden />
+        <div className="min-w-0">
+          <div className="text-sm font-semibold truncate" style={{ color: "var(--fg)" }}>
+            {c.name}
+          </div>
+          <div className="text-xs mt-0.5" style={{ color: "var(--fg-muted)", fontVariantNumeric: "tabular-nums" }}>
+            {c.stats.total} 条
+          </div>
+        </div>
+        {c.status !== "active" && (
+          <span
+            className="ml-auto shrink-0 inline-flex items-center justify-center text-xs"
+            style={{
+              width: 20,
+              height: 20,
+              borderRadius: "var(--radius-control)",
+              background: "var(--bg-warm)",
+              color: "var(--fg-muted)",
+            }}
+            title={c.status === "dormant" ? "休刊中" : "已退役"}
+          >
+            {STATUS_MARK[c.status] || "?"}
+          </span>
+        )}
+      </div>
+      {c.notes && (
+        <p className="text-xs leading-relaxed line-clamp-2" style={{ color: "var(--fg-muted)" }}>
+          {c.notes}
+        </p>
+      )}
+    </Link>
+  );
+}
+
 /** 公司索引（FRONTEND_DESIGN §2「印」）：印章卡片墙，细线分格，按条目数倒序 + 客户端检索 */
 export function CompanyIndex() {
   const [companies, setCompanies] = useState<CompanyIndexEntry[] | null>(null); // null = 加载中
   const [error, setError] = useState(false);
   const [errMsg, setErrMsg] = useState("");
   const [query, setQuery] = useState("");
+  const [showAll, setShowAll] = useState(false); // 「其他 N 家」折叠态（spec06 B2）
 
   const load = useCallback(() => {
     setError(false);
@@ -67,6 +107,11 @@ export function CompanyIndex() {
       : companies;
     return [...list].sort((a, b) => b.stats.total - a.stats.total);
   }, [companies, query]);
+
+  // 折叠切分（spec06 B2）：默认 top TOP_N + 「其他 N 家」；检索输入时自动全开
+  const searching = query.trim() !== "";
+  const top = searching ? filtered : filtered.slice(0, TOP_N);
+  const rest = searching ? [] : filtered.slice(TOP_N);
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
@@ -100,45 +145,33 @@ export function CompanyIndex() {
         ) : filtered.length === 0 ? (
           <EmptyState phrase="未有所获" description={`没有匹配「${query.trim()}」的公司，换个说法试试。`} actionLabel="清空检索" onAction={() => setQuery("")} />
         ) : (
-          <div className="seal-wall fade-up">
-            {filtered.map((c) => (
-              <Link key={c.id} href={`/company/${c.id}`} className="seal-cell">
-                <div className="flex items-center gap-3">
-                  <span className="seal" style={sealStyle(c.color, 30, 16)} aria-hidden>
-                    {c.name.charAt(0)}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold truncate" style={{ color: "var(--fg)" }}>
-                      {c.name}
-                    </div>
-                    <div className="text-xs mt-0.5" style={{ color: "var(--fg-muted)", fontVariantNumeric: "tabular-nums" }}>
-                      {c.stats.total} 条
-                    </div>
-                  </div>
-                  {c.status !== "active" && (
-                    <span
-                      className="ml-auto shrink-0 inline-flex items-center justify-center text-xs"
-                      style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: "var(--radius-control)",
-                        background: "var(--bg-warm)",
-                        color: "var(--fg-muted)",
-                      }}
-                      title={c.status === "dormant" ? "休刊中" : "已退役"}
-                    >
-                      {STATUS_MARK[c.status] || "?"}
-                    </span>
-                  )}
-                </div>
-                {c.notes && (
-                  <p className="text-xs leading-relaxed line-clamp-2" style={{ color: "var(--fg-muted)" }}>
-                    {c.notes}
-                  </p>
-                )}
-              </Link>
-            ))}
-          </div>
+          <>
+            <div className="seal-wall fade-up">
+              {top.map((c) => (
+                <SealCell key={c.id} c={c} />
+              ))}
+            </div>
+            {rest.length > 0 && (
+              <button
+                type="button"
+                className="facet-row mt-2"
+                onClick={() => setShowAll((v) => !v)}
+                aria-expanded={showAll}
+              >
+                <span className="facet-dot" aria-hidden>
+                  {showAll ? "●" : "○"}
+                </span>
+                <span>{showAll ? "收起" : `其他 ${rest.length} 家`}</span>
+              </button>
+            )}
+            {showAll && rest.length > 0 && (
+              <div className="seal-wall fade-up mt-2">
+                {rest.map((c) => (
+                  <SealCell key={c.id} c={c} />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>

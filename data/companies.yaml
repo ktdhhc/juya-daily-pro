@@ -6,6 +6,7 @@ companies:
       - Claude
       - ClaudeDevs
       - Fable
+    domain: anthropic.com
     color: "#D97757"
     status: active
     notes: Claude 厂商
@@ -18,6 +19,7 @@ companies:
       - Codex
       - GPT
       - Sora
+    domain: openai.com
     color: "#10A37F"
     status: active
     notes: ChatGPT / GPT 厂商
@@ -33,6 +35,7 @@ companies:
       - Google WeatherLab
       - WeatherNext
       - MetNet
+    domain: google.com
     color: "#4285F4"
     status: active
     notes: Gemini / DeepMind
@@ -54,6 +57,7 @@ companies:
       - ModelScope
       - HappyOyster
       - 通义
+    domain: alibaba.com
     color: "#FF6A00"
     status: active
     notes: 千问 / 阿里云
@@ -64,6 +68,7 @@ companies:
       - 月之暗面
       - Kimi
       - Moonshot
+    domain: moonshot.cn
     color: "#7C5CFF"
     status: active
     notes: Kimi 厂商
@@ -73,6 +78,7 @@ companies:
     aliases:
       - Nvidia
       - NVIDIA
+    domain: nvidia.com
     color: "#76B900"
     status: active
     notes: GPU / 物理 AI 平台
@@ -83,6 +89,7 @@ companies:
       - 快手
       - 可灵
       - Kling
+    domain: kuaishou.com
     color: "#FF4906"
     status: active
     notes: 可灵视频模型
@@ -93,6 +100,7 @@ companies:
       - Meta
       - Facebook
       - Llama
+    domain: meta.com
     color: "#0668E1"
     status: active
     notes: Llama / FAIR
@@ -105,6 +113,7 @@ companies:
       - Copilot
       - Azure
       - Phi
+    domain: microsoft.com
     color: "#00A4EF"
     status: active
     notes: Azure / Copilot
@@ -115,6 +124,7 @@ companies:
       - xAI
       - SpaceXAI
       - Grok
+    domain: x.ai
     color: "#111111"
     status: active
     notes: Grok 厂商
@@ -125,6 +135,7 @@ companies:
       - Mistral
       - Mistral AI
       - Leanstral
+    domain: mistral.ai
     color: "#FF7000"
     status: active
     notes: 欧洲开源模型厂商
@@ -138,6 +149,7 @@ companies:
       - STEPX
       - Step AOS
       - StepStar
+    domain: stepfun.ai
     color: "#1E2B8C"
     status: active
     notes: 多模态模型厂商
@@ -147,6 +159,7 @@ companies:
     aliases:
       - MiniMax
       - 海螺
+    domain: minimax.io
     color: "#FF5C35"
     status: active
     notes: 海螺 / MiniMax
@@ -158,6 +171,7 @@ companies:
       - 面壁智能
       - MiniCPM
       - OpenBMB
+    domain: modelbest.cn
     color: "#00B4A0"
     status: active
     notes: MiniCPM 端侧模型
@@ -168,6 +182,7 @@ companies:
       - 商汤
       - SenseTime
       - SenseNova
+    domain: sensetime.com
     color: "#0091FF"
     status: active
     notes: 日日新大模型
@@ -178,6 +193,7 @@ companies:
       - 昆仑万维
       - Riemann Dynamics
       - Matrix-Game
+    domain: kunlun.com
     color: "#E60012"
     status: active
     notes: Matrix-Game 世界模型
@@ -187,6 +203,7 @@ companies:
     aliases:
       - 京东
       - JoyAI
+    domain: jd.com
     color: "#E1251B"
     status: active
     notes: JoyAI 模型矩阵
@@ -199,6 +216,7 @@ companies:
       - Tencent Hunyuan
       - Hy3
       - WorkBuddy
+    domain: tencent.com
     color: "#00C9FF"
     status: active
     notes: 混元 / WorkBuddy
@@ -211,6 +229,7 @@ companies:
       - InternLM
       - Intern-S2
       - 书生
+    domain: intern-ai.org.cn
     color: "#1B1B3A"
     status: active
     notes: 书生大模型
@@ -220,6 +239,7 @@ companies:
     aliases:
       - Databricks
       - Omnigent
+    domain: databricks.com
     color: "#FF3621"
     status: active
     notes: 数据/AI 平台
@@ -228,6 +248,7 @@ companies:
     name: Cerebras
     aliases:
       - Cerebras
+    domain: cerebras.ai
     color: "#F0502A"
     status: active
     notes: 晶圆级推理芯片
@@ -237,6 +258,7 @@ companies:
     aliases:
       - Vercel
       - eve
+    domain: vercel.com
     color: "#000000"
     status: active
     notes: 前端云 / Agent 平台
@@ -247,6 +269,7 @@ companies:
       - GitHub
       - Copilot
       - OpenClaw
+    domain: github.com
     color: "#24292F"
     status: active
     notes: Copilot / 开发者平台
@@ -255,6 +278,7 @@ companies:
     name: OpenRouter
     aliases:
       - OpenRouter
+    domain: openrouter.ai
     color: "#6366F1"
     status: active
     notes: 模型聚合 API
@@ -265,6 +289,7 @@ companies:
       - Sourcegraph
       - Amp
       - ampcode
+    domain: sourcegraph.com
     color: "#0EA5E9"
     status: active
     notes: Amp 编程智能体
@@ -273,6 +298,7 @@ companies:
     name: Firecrawl
     aliases:
       - Firecrawl
+    domain: firecrawl.dev
     color: "#FF8000"
     status: active
     notes: 爬虫/检索 API
@@ -282,6 +308,7 @@ companies:
     aliases:
       - Exa
       - Exa Agent
+    domain: exa.ai
     color: "#22C55E"
     status: active
     notes: Web 研究 API
@@ -295,6 +322,7 @@ companies:
       - GLM
       - ChatGLM
       - bigmodel
+    domain: z.ai
     color: "#3859FF"
     status: active
     notes: GLM 厂商
@@ -304,6 +332,7 @@ companies:
     aliases:
       - DeepSeek
       - 深度求索
+    domain: deepseek.com
     color: "#4D6BFE"
     status: active
     notes: DeepSeek 厂商
@@ -318,6 +347,7 @@ companies:
       - TRAE
       - 火山引擎
       - Volcano Engine
+    domain: bytedance.com
     color: "#325AB4"
     status: active
     notes: 豆包 / TRAE / 火山引擎
@@ -328,6 +358,7 @@ companies:
       - 小米
       - Xiaomi
       - 玄戒
+    domain: xiaomi.com
     color: "#FF6900"
     status: active
     notes: 玄戒芯片 / 端侧 AI
@@ -340,6 +371,7 @@ companies:
       - Ant Group
       - 百灵
       - Ling-
+    domain: antgroup.com
     color: "#1677FF"
     status: active
     notes: 百灵大模型
@@ -351,6 +383,7 @@ companies:
       - RedNote
       - dots studio
       - dots3
+    domain: xiaohongshu.com
     color: "#FF2442"
     status: active
     notes: dots 系列模型
@@ -360,6 +393,7 @@ companies:
     aliases:
       - Hugging Face
       - HuggingFace
+    domain: huggingface.co
     color: "#FFD21E"
     status: active
     notes: 模型与数据社区
@@ -369,6 +403,7 @@ companies:
     aliases:
       - 苹果
       - Apple
+    domain: apple.com
     color: "#555555"
     status: active
     notes: 端侧 / 设备 AI
@@ -377,6 +412,7 @@ companies:
     name: Midjourney
     aliases:
       - Midjourney
+    domain: midjourney.com
     color: "#1E293B"
     status: active
     notes: 图像模型
@@ -386,6 +422,7 @@ companies:
     aliases:
       - Stability AI
       - Stability
+    domain: stability.ai
     color: "#8B5CF6"
     status: active
     notes: Stable Diffusion 系
@@ -395,6 +432,7 @@ companies:
     aliases:
       - Thinking Machines Lab
       - Thinking Machines
+    domain: thinkingmachines.ai
     color: "#0F766E"
     status: active
     notes: Mira Murati 创办
@@ -404,6 +442,7 @@ companies:
     aliases:
       - Black Forest Labs
       - FLUX
+    domain: blackforestlabs.ai
     color: "#6B7280"
     status: active
     notes: FLUX 图像模型

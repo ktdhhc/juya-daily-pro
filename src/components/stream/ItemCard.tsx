@@ -1,8 +1,9 @@
 "use client";
 
-import { CSSProperties, KeyboardEvent, MouseEvent } from "react";
+import { KeyboardEvent, MouseEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { LogoSeal } from "../common/LogoSeal";
 import { StreamItem } from "@/lib/api";
 
 export type ItemCardVariant = "stream" | "company";
@@ -23,11 +24,7 @@ export function issueAnchorHref(item: StreamItem): string {
   return item.sequenceInt > 0 ? `${base}#article-${item.sequenceInt}` : base;
 }
 
-function sealStyle(color: string, size: number, fontSize: number): CSSProperties {
-  return { "--seal": color, width: size, height: size, fontSize } as CSSProperties;
-}
-
-/** 公司钤印：18px 方形（2px 圆角），单字取公司名首字，hover 浮层 tooltip */
+/** 公司钤印：18px 方形（2px 圆角），有 logo 渲染真实徽标、否则首字回退，hover 浮层 tooltip */
 function OwnerSeal({
   owner,
   outline,
@@ -40,14 +37,20 @@ function OwnerSeal({
   return (
     <Link
       href={`/company/${owner.company}`}
-      className={`seal${outline ? " seal-outline" : ""}`}
-      style={sealStyle(owner.color, size, Math.round(size * 0.55))}
-      data-tip={owner.name}
+      className="shrink-0" // 原钤印 .seal 自带 flex-shrink:0，chip 内移后由 Link 保持
       aria-label={`查看公司 ${owner.name}`}
       onClick={(e) => e.stopPropagation()}
       tabIndex={-1} // 卡片本身可进焦点，钤印点击直达即可，避免双焦点停靠
     >
-      {owner.name.charAt(0)}
+      <LogoSeal
+        id={owner.company}
+        name={owner.name}
+        color={owner.color}
+        size={size}
+        fontSize={Math.round(size * 0.55)}
+        outline={outline}
+        dataTip={owner.name}
+      />
     </Link>
   );
 }

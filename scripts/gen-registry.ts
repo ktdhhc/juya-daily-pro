@@ -79,8 +79,17 @@ function typeName(v: unknown): string {
 // ---------- 生成 ----------
 
 function renderRegistry(companies: Company[]): string {
+  // 只取 Company 契约字段（yaml 中的 domain 等非契约字段不得漏进生成物），其余同上。
+  const picked = companies.map((c) => ({
+    id: c.id,
+    name: c.name,
+    aliases: c.aliases,
+    color: c.color,
+    status: c.status,
+    notes: c.notes,
+  }));
   // JSON.stringify 输出即合法 TS 字面量（含中文/正则反斜杠的确定性转义），上下文类型收敛到 Company。
-  const body = JSON.stringify(companies, null, 2);
+  const body = JSON.stringify(picked, null, 2);
   return (
     "// 由 `npm run gen:registry` 从 data/companies.yaml 生成（spec02 3.2，真相源 ADR-0001）。勿手改。\n" +
     'import type { Company } from "./schema";\n' +

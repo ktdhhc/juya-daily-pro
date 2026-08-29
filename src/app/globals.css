@@ -357,6 +357,10 @@ body { background-color: var(--bg); color: var(--fg); font-family: var(--theme-f
 }
 .text-link:hover { color: var(--accent); text-decoration-color: var(--accent); }
 
+/* 同步运行中 — 细线图标旋转（spec06 B4，FRONTEND_DESIGN §5 反馈动效） */
+@keyframes icon-spin { to { transform: rotate(360deg); } }
+.icon-spin { animation: icon-spin 900ms linear infinite; transform-origin: center; }
+
 /* 印章卡片墙 — 细线分格，无默认卡片盒（FRONTEND_DESIGN §1 反「默认卡片脸」） */
 .seal-wall {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -687,5 +691,5 @@ button.day-num:active { transform: scale(0.95); }
 @keyframes overlay-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .galley::after, .fade-up, .overlay-backdrop, .overlay-panel, .month-sec { animation: none; }
+  .galley::after, .fade-up, .overlay-backdrop, .overlay-panel, .month-sec, .icon-spin { animation: none; }
 }

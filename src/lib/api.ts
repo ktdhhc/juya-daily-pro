@@ -84,9 +84,49 @@ function extractError(res: Response): ApiError {
 
 /** 统一 fetch：相对路径 /api/...，非 2xx 解析 { error: { code, message } } 后抛 ApiError */
 export async function apiFetch<T>(path: string): Promise<T> {
+  return request<T>(path);
+}
+
+/** 拼接 /api/items 过滤参数（from/to 闭区间；before_date 分页参数由调用方单独给，不进 URL——ADR-0012）。
+ *  query 为报头搜索词：URL 上用 ?query=（ADR-0012 可分享），API 侧映射为 q（spec06 契约扩展 1） */
+export function itemsQueryString(params: {
+  company?: string;
+  category?: string;
+  query?: string;
+  from?: string;
+  to?: string;
+  beforeDate?: string | null;
+  limit?: number;
+}): string {
+  const p = new URLSearchParams();
+  if (params.company) p.set("company", params.company);
+  if (params.category) p.set("category", params.category);
+  if (params.query) p.set("q", params.query);
+  if (params.from) p.set("from", params.from);
+  if (params.to) p.set("to", params.to);
+  if (params.beforeDate) p.set("before_date", params.beforeDate);
+  p.set("limit", String(params.limit ?? 7));
+  return p.toString();
+}
+
+/** POST /api/sync 响应（spec06 契约扩展 2，钉死） */
+export interface SyncResponse {
+  ok: boolean;
+  /** 成功同步的期日期 */
+  dates: string[];
+  /** 失败期：{ date, error }，单期容错不阻塞后续期 */
+  failures: { date: string; error: string }[];
+}
+
+/** POST /api/sync：增量同步（spec06 B4）。SYNC_TOKEN 守卫生效时 403 = unauthorized（需要同步令牌） */
+export function triggerSync(): Promise<SyncResponse> {
+  return request<SyncResponse>("/api/sync", { method: "POST", headers: { Accept: "application/json" } });
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, { headers: { Accept: "application/json" } });
+    res = await fetch(path, { headers: { Accept: "application/json" }, ...init });
   } catch {
     throw new ApiError("network", 0, "网络不可达，请检查连接后重试");
   }
@@ -102,23 +142,4 @@ export async function apiFetch<T>(path: string): Promise<T> {
     throw extractError(res);
   }
   return (await res.json()) as T;
-}
-
-/** 拼接 /api/items 过滤参数（from/to 闭区间；before_date 分页参数由调用方单独给，不进 URL——ADR-0012） */
-export function itemsQueryString(params: {
-  company?: string;
-  category?: string;
-  from?: string;
-  to?: string;
-  beforeDate?: string | null;
-  limit?: number;
-}): string {
-  const p = new URLSearchParams();
-  if (params.company) p.set("company", params.company);
-  if (params.category) p.set("category", params.category);
-  if (params.from) p.set("from", params.from);
-  if (params.to) p.set("to", params.to);
-  if (params.beforeDate) p.set("before_date", params.beforeDate);
-  p.set("limit", String(params.limit ?? 7));
-  return p.toString();
 }

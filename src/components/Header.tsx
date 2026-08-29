@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState, RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, RefObject } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
+import { ApiError, triggerSync } from "@/lib/api";
 
 export type HeaderActive = "daily" | "stream" | "company";
 
@@ -14,6 +16,8 @@ interface Props {
   onCalendarToggle?: () => void;
   hasEntries?: boolean;
   active?: HeaderActive;
+  /** 报头搜索提交（spec06 B3）：/stream 传入以并入 facet 双向同步；缺省 router.push 跳 /stream?query= */
+  onSearch?: (term: string) => void;
 }
 
 const NAV_ITEMS: { key: HeaderActive; label: string; href: string }[] = [
@@ -23,11 +27,66 @@ const NAV_ITEMS: { key: HeaderActive; label: string; href: string }[] = [
 ];
 
 /** 全站共用报头（FRONTEND_DESIGN §4.1）。
- *  阅读页专属控件（进度条 / 复制链接 / 外链 / 日历入口 / 刊号）仅在 active="daily" 时出现。 */
-export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEntries, active }: Props) {
+ *  阅读页专属控件（进度条 / 复制链接 / 外链 / 日历入口 / 刊号）仅在 active="daily" 时出现；
+ *  搜索与同步 icon-btn 全视图可见（spec06 B3/B4）。 */
+export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEntries, active, onSearch }: Props) {
+  const router = useRouter();
   const [progress, setProgress] = useState(0);
   const [copied, setCopied] = useState(false);
   const isDaily = active === "daily" || active === undefined;
+
+  // 统一搜索（spec06 B3）：放大镜展开报头下方全宽搜索条，Esc 收起，Enter 跳 /stream?query=
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [term, setTerm] = useState("");
+
+  const submitSearch = () => {
+    const t = term.trim();
+    if (!t) return;
+    setSearchOpen(false);
+    setTerm("");
+    if (onSearch) onSearch(t);
+    else router.push(`/stream?query=${encodeURIComponent(t)}`);
+  };
+
+  // 同步按钮（spec06 B4）：POST /api/sync，运行中旋转，成功细线小条约 5s 自散，失败一行错误 + 重试
+  const [syncPhase, setSyncPhase] = useState<"idle" | "running" | "ok" | "fail">("idle");
+  const [syncMsg, setSyncMsg] = useState("");
+  const syncingRef = useRef(false);
+
+  const runSync = useCallback(async () => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncPhase("running");
+    try {
+      const res = await triggerSync();
+      if (res.ok) {
+        setSyncMsg(`同步 ${res.dates.length} 期${res.failures.length > 0 ? ` · 失败 ${res.failures.length}` : ""}`);
+        setSyncPhase("ok");
+      } else {
+        const f = res.failures[0];
+        setSyncMsg(f ? `${f.date} · ${f.error}` : "同步失败");
+        setSyncPhase("fail");
+      }
+    } catch (e) {
+      setSyncMsg(
+        e instanceof ApiError
+          ? e.code === "unauthorized"
+            ? "需要同步令牌"
+            : e.message
+          : "网络异常，请稍后重试"
+      );
+      setSyncPhase("fail");
+    } finally {
+      syncingRef.current = false;
+    }
+  }, []);
+
+  // 成功小条约 5s 自散；失败 / 403 提示保留至下次操作（spec06 B4）
+  useEffect(() => {
+    if (syncPhase !== "ok") return;
+    const t = setTimeout(() => setSyncPhase("idle"), 5000);
+    return () => clearTimeout(t);
+  }, [syncPhase]);
 
   const copyLink = async () => {    try {
       await navigator.clipboard.writeText(window.location.href);
@@ -74,6 +133,37 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
         </nav>
 
         <div className="flex items-center gap-1 ml-auto">
+          {/* 统一搜索（spec06 B3，全视图） */}
+          <button
+            onClick={() => setSearchOpen((v) => !v)}
+            className="icon-btn"
+            style={searchOpen ? { color: "var(--accent)" } : undefined}
+            aria-label="搜索"
+            aria-expanded={searchOpen}
+            title="搜索"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </button>
+          {/* 同步最近日报（spec06 B4，全视图） */}
+          <button
+            onClick={() => void runSync()}
+            className="icon-btn"
+            style={syncPhase === "fail" ? { color: "var(--accent)" } : undefined}
+            aria-label="同步最近日报"
+            title="同步最近日报"
+            aria-busy={syncPhase === "running"}
+          >
+            <svg
+              className={syncPhase === "running" ? "icon-spin" : undefined}
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+            >
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+          </button>
           {isDaily && issueNo != null && currentDate && (
             <span
               className="mr-2 text-xs whitespace-nowrap"
@@ -125,6 +215,46 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
           <ThemeToggle />
         </div>
       </div>
+
+      {/* 报头下方全宽搜索条（spec06 B3）：fade-up，Esc 收起，Enter 跳 /stream?query= */}
+      {searchOpen && (
+        <div className="px-5 pb-2.5 fade-up">
+          <input
+            autoFocus
+            type="search"
+            className="control-input"
+            placeholder="搜索事件：标题 / 摘要 / 正文"
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setSearchOpen(false);
+              else if (e.key === "Enter") submitSearch();
+            }}
+            aria-label="搜索事件"
+          />
+        </div>
+      )}
+
+      {/* 同步状态细线小条（spec06 B4）：成功约 5s 自散；失败一行错误 + 重试文字链；403 提示需要同步令牌 */}
+      {syncPhase === "ok" && (
+        <div
+          className="rule-t px-5 py-1.5 text-xs flex items-center gap-2 fade-up"
+          style={{ color: "var(--fg-muted)", fontVariantNumeric: "tabular-nums" }}
+          role="status"
+        >
+          <span aria-hidden style={{ color: "var(--accent)" }}>●</span>
+          {syncMsg}
+        </div>
+      )}
+      {syncPhase === "fail" && (
+        <div className="rule-t px-5 py-1.5 text-xs flex items-center gap-2 fade-up" style={{ color: "var(--fg-muted)" }} role="status">
+          <span>{syncMsg}</span>
+          <button type="button" className="text-link" onClick={() => void runSync()}>
+            重试
+          </button>
+        </div>
+      )}
+
       {isDaily && <div className="reading-progress" style={{ transform: `scaleX(${progress})` }} />}
     </header>
   );
