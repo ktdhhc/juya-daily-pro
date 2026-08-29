@@ -20,6 +20,13 @@ import {
 } from "../sync/sqlgen";
 import { requireAdmin } from "./auth";
 import {
+  ApiError,
+  reviewPatch,
+  reviewPending,
+  reviewPublish,
+  runParse,
+} from "./parse";
+import {
   DEFAULT_PAGE_LIMIT,
   MAX_BOUND_PARAMS,
   buildCompaniesIndexQuery,
@@ -39,6 +46,11 @@ export interface Env {
   MD_BASE?: string;
   SYNC_LOOKBACK_DAYS?: string;
   ADMIN_TOKEN?: string;
+  // 解析与审核端点 vars（spec10 Step 2.2；LLM_API_KEY 为 secret，缺 key → 500 llm_not_configured）
+  LLM_API_BASE?: string;
+  LLM_MODEL?: string;
+  LLM_API_KEY?: string;
+  MAX_LLM_PER_RUN?: string;
 }
 
 const RE_DATE = /^\d{4}-\d{2}-\d{2}$/; // YYYY-MM-DD（格式级校验，历法合法性交给 D1 匹配结果）
@@ -107,6 +119,24 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     if (pathname === "/api/companies") return await methodGuardGet(request, () => companiesIndex(env));
     if (pathname === "/api/sync") return await syncRoute(request, env);
     if (pathname === "/api/admin/ping") return await adminPingRoute(request, env);
+    // 解析与审核四端点（spec10 Step 2.3，全部 requireAdmin；GET pending 走 methodGuard 语义但
+    // 不进 withCache——审核数据必须实时，四端点均不写缓存）
+    if (pathname === "/api/parse") {
+      return await adminMethodRoute(request, env, "POST", async () => jsonOk(await runParse(env)));
+    }
+    if (pathname === "/api/review/pending") {
+      return await adminMethodRoute(request, env, "GET", async () => jsonOk(await reviewPending(env)));
+    }
+    if (pathname === "/api/review/item") {
+      return await adminMethodRoute(request, env, "PATCH", async () =>
+        jsonOk(await reviewPatch(env, await readJsonBody(request)))
+      );
+    }
+    if (pathname === "/api/review/publish") {
+      return await adminMethodRoute(request, env, "POST", async () =>
+        jsonOk(await reviewPublish(env, await readJsonBody(request)))
+      );
+    }
 
     const dailyDate = matchPrefix(pathname, "/api/daily/");
     if (dailyDate !== null) {
@@ -119,6 +149,7 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     return jsonError(404, "not_found", `未知路径：${pathname}`);
   } catch (err) {
     if (err instanceof HttpError) return jsonError(err.status, err.code, err.message);
+    if (err instanceof ApiError) return jsonError(err.status, err.code, err.message);
     console.error("[api] internal error:", err);
     return jsonError(500, "internal_error", err instanceof Error ? err.message : "内部错误");
   }
@@ -585,6 +616,35 @@ function adminPingRoute(request: Request, env: Env): Promise<Response> {
 }
 
 // ---------- 工具 ----------
+
+/** 守卫端点通用骨架（spec10 解析与审核四端点）：method 守卫 + requireAdmin，不进 withCache（实时数据） */
+async function adminMethodRoute(
+  request: Request,
+  env: Env,
+  method: string,
+  handler: () => Promise<Response>
+): Promise<Response> {
+  if (request.method !== method) {
+    return jsonError(405, "method_not_allowed", `仅支持 ${method}（实际 ${request.method}）`, {
+      Allow: method,
+    });
+  }
+  if (!requireAdmin(env.ADMIN_TOKEN, request.headers.get("x-admin-token"))) {
+    return jsonError(403, "unauthorized", "缺少或错误的管理口令（x-admin-token 请求头）");
+  }
+  return handler();
+}
+
+/** 读 JSON body：空 body → undefined（publish 缺省全日期语义）；非法 JSON → 400 invalid_param */
+async function readJsonBody(request: Request): Promise<unknown> {
+  const text = await request.text();
+  if (text.trim() === "") return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new HttpError(400, "invalid_param", "body 非法 JSON");
+  }
+}
 
 /** UTC 口径的 N 天前日期（YYYY-MM-DD）；last30d 统计窗口锚点 */
 function isoDaysAgo(days: number): string {

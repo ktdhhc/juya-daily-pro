@@ -3,7 +3,15 @@
 // chatJson / runWithLimiter（薄 IO）不单测（ADR-0011：单测一律不调真实 LLM）。
 // 纪律：本文件不读仓库 .env，全部用注入文本验证；用例里的值均为虚构。
 import { describe, expect, it } from "vitest";
-import { parseEnvText, resolveLlmConfig } from "./llm";
+import { chatJson as chatJsonDirect, runWithLimiter as limiterDirect } from "../../src/lib/llm/chat";
+import { chatJson, parseEnvText, resolveLlmConfig, runWithLimiter } from "./llm";
+
+describe("re-export（spec10 2.1：chatJson/runWithLimiter 提取至 src/lib/llm/chat 后的转发断言）", () => {
+  it("chatJson / runWithLimiter 与 src/lib/llm/chat 同一实现（零改动转发）", () => {
+    expect(chatJson).toBe(chatJsonDirect);
+    expect(runWithLimiter).toBe(limiterDirect);
+  });
+});
 
 describe("parseEnvText", () => {
   it("逐行 KEY=VALUE 解析", () => {

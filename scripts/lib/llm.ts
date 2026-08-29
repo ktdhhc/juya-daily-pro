@@ -1,24 +1,20 @@
 // llm — spec09 Step 1：enrich 与 propose 两个离线作业共用的 LLM 接入层（唯一出入口）。
 // 纯函数 parseEnvText / resolveLlmConfig 由 llm.test.ts 单测；loadLlmConfig 只做读文件的
 // 薄组合；chatJson / runWithLimiter 为薄 IO，不单测（ADR-0011：单测一律不调真实 LLM）。
+// spec10 Step 2.1：chatJson / runWithLimiter / LlmConfig 已提取至 src/lib/llm/chat.ts
+//（零 node 依赖，Worker 解析段共用），本文件 re-export——scripts 侧调用方零改动。
 // 纪律：任何路径都不打印配置值（含 key），报错只出现键名。
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { varFromWranglerConfig } from "./wrangler-cli";
+import type { LlmConfig } from "../../src/lib/llm/chat";
+
+export { chatJson, runWithLimiter } from "../../src/lib/llm/chat";
+export type { LlmConfig } from "../../src/lib/llm/chat";
 
 // 仓库根：本文件位于 scripts/lib/，上跳两级（与 wrangler-cli.ts 同指一处）。
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
-
-// 单次 LLM 请求超时与 429/5xx 退避间隔。
-const CHAT_TIMEOUT_MS = 30_000;
-const RETRY_DELAY_MS = 1_500;
-
-export interface LlmConfig {
-  baseUrl: string; // 形如 https://host/v1，chatJson 在其后拼 /chat/completions
-  model: string;
-  apiKey: string;
-}
 
 // ---------- 配置解析（纯函数） ----------
 
@@ -91,74 +87,4 @@ export function loadLlmConfig(): LlmConfig {
     LLM_MODEL: varFromWranglerConfig("LLM_MODEL", ""),
   };
   return resolveLlmConfig(parseEnvText(envText), wranglerVars);
-}
-
-// ---------- chatJson（薄 IO，不单测） ----------
-
-interface ChatResponse {
-  choices?: Array<{ message?: { content?: string } }>;
-}
-
-// POST <base>/chat/completions：response_format json_object，Bearer 鉴权，
-// 429 / 5xx 退避重试 1 次，两次仍失败 throw（消息含状态码）。返回首条消息内容字符串。
-export async function chatJson(cfg: LlmConfig, system: string, user: string): Promise<string> {
-  const body = JSON.stringify({
-    model: cfg.model,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-    response_format: { type: "json_object" },
-  });
-
-  let status = 0;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${cfg.apiKey}`,
-      },
-      body,
-      signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
-    });
-    if (res.ok) {
-      const data = (await res.json()) as ChatResponse;
-      const content = data.choices?.[0]?.message?.content;
-      if (content === undefined) {
-        throw new Error("LLM 响应缺少 choices[0].message.content");
-      }
-      return content;
-    }
-    status = res.status;
-    // 仅 429 / 5xx 退避重试 1 次；其余状态码直接失败
-    if (attempt === 1 && (status === 429 || status >= 500)) {
-      await sleep(RETRY_DELAY_MS);
-      continue;
-    }
-    break;
-  }
-  throw new Error(`LLM 请求失败：HTTP ${status}`);
-}
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
-
-// ---------- runWithLimiter（薄 IO 编排，不单测） ----------
-
-// 固定并发池（与 scripts/backfill.ts mapPool 同构）：按 next++ 依序领取，结果按下标
-// 回填，保持与输入同序返回。单个 job 抛错即整体 reject，由调用方在 job 内自行兜底。
-export async function runWithLimiter<T>(
-  jobs: Array<() => Promise<T>>,
-  max: number,
-): Promise<T[]> {
-  const results: T[] = new Array(jobs.length);
-  let next = 0;
-  const workers = Array.from({ length: Math.min(max, jobs.length) }, async () => {
-    while (next < jobs.length) {
-      const i = next++;
-      results[i] = await jobs[i]();
-    }
-  });
-  await Promise.all(workers);
-  return results;
 }
