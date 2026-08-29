@@ -68,7 +68,7 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
     try {
       const res = await triggerSync();
       if (res.ok) {
-        setSyncMsg(`同步 ${res.dates.length} 期${res.failures.length > 0 ? ` · 失败 ${res.failures.length}` : ""}`);
+        setSyncMsg(`同步 ${res.stagedDates.length} 期（待审核）${res.failures.length > 0 ? ` · 失败 ${res.failures.length}` : ""}`);
         setSyncPhase("ok");
       } else {
         const f = res.failures[0];

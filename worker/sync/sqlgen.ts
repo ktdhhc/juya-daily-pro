@@ -18,9 +18,16 @@ const quote = (s: string): string => `'${escapeSqlText(s)}'`;
 
 // ---------- sources ----------
 
-export function sourcesUpsertSql(date: string, markdown: string): string {
+// opts.staged（spec10 Step 1.2）：INSERT 显式含 published 且置 0（同步段写入暂存区，
+// 读 API published=1 过滤下对访客不可见，人工审核 publish 后才可见）；
+// 缺省（backfill 等全量路径）不写 published → 落 DEFAULT 1。
+// 两种形态的 DO UPDATE SET 均不含 published：重同步不翻转 staged 标记、publish 后不被打回。
+export function sourcesUpsertSql(date: string, markdown: string, opts?: { staged?: boolean }): string {
+  const staged = opts?.staged === true;
+  const columns = staged ? "date, markdown, published" : "date, markdown";
+  const publishedValue = staged ? ", 0" : "";
   return (
-    `INSERT INTO sources (date, markdown) VALUES (${quote(date)}, ${quote(markdown)}) ` +
+    `INSERT INTO sources (${columns}) VALUES (${quote(date)}, ${quote(markdown)}${publishedValue}) ` +
     "ON CONFLICT(date) DO UPDATE SET markdown = excluded.markdown;"
   );
 }
@@ -30,19 +37,26 @@ export function sourcesUpsertSql(date: string, markdown: string): string {
 // 列清单按 spec 2.2：id, date, tag, sequence_int, category, title, primary_link,
 // summary, body_md, related_links, enrich_state（owners 走 item_companies，spec 03）。
 // primary_link undefined → NULL；related_links 存 JSON 字符串。
-export function itemsUpsertSql(items: Item[]): string {
+// opts.staged（spec10 Step 1.2）：列清单与 VALUES 显式含 published 且置 0；
+// 缺省不写 published → 落 DEFAULT 1（backfill 语义不变）。两种形态的
+// DO UPDATE SET 均不含 published（重同步不翻转、publish 后不被打回，同 sourcesUpsertSql）。
+export function itemsUpsertSql(items: Item[], opts?: { staged?: boolean }): string {
   if (items.length === 0) return "";
+  const staged = opts?.staged === true;
+  const publishedValue = staged ? ", 0" : "";
   const rows = items.map((it) => {
     const primaryLink = it.primaryLink === undefined ? "NULL" : quote(it.primaryLink);
     return (
       `(${quote(it.id)}, ${quote(it.date)}, ${quote(it.tag)}, ${it.sequenceInt}, ` +
       `${quote(it.category)}, ${quote(it.title)}, ${primaryLink}, ${quote(it.summary)}, ` +
-      `${quote(it.bodyMd)}, ${quote(JSON.stringify(it.relatedLinks))}, ${quote(it.enrichState)})`
+      `${quote(it.bodyMd)}, ${quote(JSON.stringify(it.relatedLinks))}, ${quote(it.enrichState)}${publishedValue})`
     );
   });
   return (
     "INSERT INTO items (id, date, tag, sequence_int, category, title, primary_link, " +
-    "summary, body_md, related_links, enrich_state) " +
+    "summary, body_md, related_links, enrich_state" +
+    (staged ? ", published" : "") +
+    ") " +
     `VALUES ${rows.join(", ")} ` +
     "ON CONFLICT(id) DO UPDATE SET date = excluded.date, tag = excluded.tag, " +
     "sequence_int = excluded.sequence_int, category = excluded.category, " +

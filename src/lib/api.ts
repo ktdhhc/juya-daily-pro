@@ -111,11 +111,13 @@ export function itemsQueryString(params: {
   return p.toString();
 }
 
-/** POST /api/sync 响应（spec06 契约扩展 2，钉死） */
+/** POST /api/sync 响应（spec06 契约扩展 2 + spec10 同步段契约，钉死） */
 export interface SyncResponse {
   ok: boolean;
   /** 成功同步的期日期 */
   dates: string[];
+  /** 本次写入暂存区的成功期（published=0，待审核；publish 前访客不可见），与 dates 同序同值 */
+  stagedDates: string[];
   /** 失败期：{ date, error }，单期容错不阻塞后续期 */
   failures: { date: string; error: string }[];
 }

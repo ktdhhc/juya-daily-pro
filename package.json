@@ -13,6 +13,7 @@
     "gen:registry": "tsx scripts/gen-registry.ts",
     "logos:fetch": "tsx scripts/fetch-logos.ts",
     "backfill": "tsx scripts/backfill.ts",
+    "db:migrate": "wrangler d1 execute juya-daily --local --file scripts/migrate-staging.sql",
     "match:all": "tsx scripts/match-all.ts",
     "enrich": "tsx scripts/enrich.ts",
     "propose:companies": "tsx scripts/propose-companies.ts",

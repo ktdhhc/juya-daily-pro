@@ -185,8 +185,9 @@ interface SourceRow {
 }
 
 async function dailyLatest(env: Env): Promise<Response> {
-  // markdown 取 sources 最新一期（queries.ts 五构造器之外的直查，SQL 极简不设构造器）
-  const row = await env.DB.prepare("SELECT date, markdown FROM sources ORDER BY date DESC LIMIT 1").first<SourceRow>();
+  // markdown 取 sources 最新一期（queries.ts 五构造器之外的直查，SQL 极简不设构造器）；
+  // published=1（spec10）：暂存期（staged 写入 published=0）对访客不可见
+  const row = await env.DB.prepare("SELECT date, markdown FROM sources WHERE published = 1 ORDER BY date DESC LIMIT 1").first<SourceRow>();
   if (row === null) return jsonError(404, "daily_not_found", "暂无任何日报");
   return dailyPayload(row);
 }
@@ -195,7 +196,7 @@ async function dailyByDate(date: string, env: Env): Promise<Response> {
   if (!RE_DATE.test(date)) {
     return jsonError(400, "invalid_param", `date 非法：须为 YYYY-MM-DD，实际 ${JSON.stringify(date)}`);
   }
-  const row = await env.DB.prepare("SELECT date, markdown FROM sources WHERE date = ?").bind(date).first<SourceRow>();
+  const row = await env.DB.prepare("SELECT date, markdown FROM sources WHERE date = ? AND published = 1").bind(date).first<SourceRow>();
   if (row === null) return jsonError(404, "daily_not_found", `该日期无日报：${date}`);
   return dailyPayload(row);
 }
@@ -514,6 +515,8 @@ async function syncNow(env: Env): Promise<Response> {
     // batch 的每个元素须恰为一条完整语句：enrichStateUpdateSql / companiesPruneSql 产物是
     // 「单语句单行 × N」以 \n 连接，按 \n 拆分安全；其余生成器各为单语句，
     // 字面量内换行（markdown 正文）随语句整体交给 prepare 引号感知解析。
+    // spec10：sources/items 一律 staged 写入（published=0，人工审核 publish 后才对访客可见）；
+    // matchAll / registry 镜像 / enrich_state 回写语义不变。
     const synced: string[] = [];
     const failures: { date: string; error: string }[] = [];
     const statements: string[] = [];
@@ -526,8 +529,8 @@ async function syncNow(env: Env): Promise<Response> {
       }
       const { ownerRows, okIds, missingIds } = matchAll(o.items, registry);
       statements.push(
-        sourcesUpsertSql(o.parsedDate, o.markdown),
-        itemsUpsertSql(o.items),
+        sourcesUpsertSql(o.parsedDate, o.markdown, { staged: true }),
+        itemsUpsertSql(o.items, { staged: true }),
         itemCompaniesUpsertSql(ownerRows),
         ...enrichStateUpdateSql(okIds, missingIds).split("\n").filter((s) => s !== ""),
         syncLogUpsertSql(o.date, "ok", ""),
@@ -544,8 +547,9 @@ async function syncNow(env: Env): Promise<Response> {
     if (batch.length > 0) await env.DB.batch(batch);
 
     // 响应契约：ok = 窗口内全部成功；dates = 实际写入的期（成功期，升序 = 执行序）；
+    // stagedDates = 同 dates（spec10：同步一律 staged，成功期均待审核，publish 前访客不可见）；
     // failures = 失败期与错误消息（与 dates 一起划分整个窗口）
-    return jsonOk({ ok: failures.length === 0, dates: synced, failures });
+    return jsonOk({ ok: failures.length === 0, dates: synced, stagedDates: synced, failures });
   } catch (err) {
     if (err instanceof HttpError) throw err;
     throw new HttpError(500, "sync_failed", err instanceof Error ? err.message : String(err));

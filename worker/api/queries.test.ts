@@ -303,3 +303,54 @@ describe("chunkArray + MAX_BOUND_PARAMS（D1 绑定参数上限防护）", () =>
     expect(chunkArray(["a"], 90)).toEqual([["a"]]);
   });
 });
+
+// ---------- published=1 过滤（spec10 暂存基座：暂存行 published=0 对读 API 不可见）----------
+
+describe("published=1 过滤（spec10）", () => {
+  it("buildItemsDatesQuery：SQL 含 i.published = 1，字面量过滤不占绑定参数", () => {
+    const q = buildItemsDatesQuery({});
+    expect(q.sql).toContain("i.published = 1");
+    expect(q.params).toEqual([7]);
+    expectConsistent(q);
+  });
+
+  it("buildItemsForDatesQuery：SQL 含 i.published = 1，参数仍只有日期本身", () => {
+    const q = buildItemsForDatesQuery(["2026-08-27"], {});
+    expect(q.sql).toContain("i.published = 1");
+    expect(q.params).toEqual(["2026-08-27"]);
+    expectConsistent(q);
+  });
+
+  it("buildCompaniesIndexQuery：total/last30d/lastEventDate 三个标量子查询均含 published 过滤，参数不变", () => {
+    const q = buildCompaniesIndexQuery({ last30dFrom: "2026-07-29" });
+    expect(q.sql.match(/i\.published = 1/g)?.length).toBe(3);
+    expect(q.params).toEqual(["2026-07-29"]);
+    expectConsistent(q);
+  });
+
+  it("buildCompanyProfileQueries：stats 五个子查询 + categoryDistribution + coworkers 均含过滤；company 基础行不涉及 items", () => {
+    const q = buildCompanyProfileQueries("anthropic", { last30dFrom: "2026-07-29" });
+    expect(q.stats.sql.match(/i\.published = 1/g)?.length).toBe(5);
+    expect(q.categoryDistribution.sql).toContain("i.published = 1");
+    expect(q.coworkers.sql).toContain("i.published = 1");
+    expect(q.company.sql).not.toContain("published");
+    expect(q.stats.params).toEqual([
+      "anthropic",
+      "anthropic",
+      "2026-07-29",
+      "anthropic",
+      "anthropic",
+      "anthropic",
+    ]);
+    for (const stmt of Object.values(q)) expectConsistent(stmt);
+  });
+
+  it("staged 组合：published 过滤与 facet/q 过滤可叠加，参数序不变（staged 行 published=0 被排除）", () => {
+    const q = buildItemsForDatesQuery(["2026-08-29"], { company: "zhipu", q: "GLM" });
+    expect(q.sql).toContain("i.published = 1");
+    expect(q.sql).toContain("EXISTS");
+    expect(q.sql).toContain("LIKE ? ESCAPE '\\'");
+    expect(q.params).toEqual(["2026-08-29", "zhipu", "%GLM%", "%GLM%", "%GLM%"]);
+    expectConsistent(q);
+  });
+});

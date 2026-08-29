@@ -2,6 +2,7 @@
 // 铁律：用户输入一律走 bind 参数（?），绝不拼进 SQL 字符串——注入安全由 worker/api/queries.test.ts 钉死。
 // 不做校验/不做 I/O：参数合法性（日期格式、limit 1..31）由 routes 层负责，这里只组装。
 // 消费方式：env.DB.prepare(stmt.sql).bind(...stmt.params)。
+// published=1（spec10 暂存基座）：读 API 一律只出已发布行；published 为字面量过滤，不占绑定参数。
 
 export interface SqlStatement {
   sql: string;
@@ -65,9 +66,9 @@ function qClause(filters: ItemsFilters): WhereClause {
 
 // ---------- 1. 期集合（/api/items 第一层） ----------
 
-/** 命中过滤的「期」日期列表：DISTINCT date，新→旧，LIMIT limit（默认 7） */
+/** 命中过滤的「期」日期列表：DISTINCT date，新→旧，LIMIT limit（默认 7）；仅 published=1（spec10） */
 export function buildItemsDatesQuery(filters: ItemsFilters): SqlStatement {
-  let where = "";
+  let where = " AND i.published = 1";
   const params: unknown[] = [];
   if (filters.beforeDate !== undefined && filters.beforeDate !== "") {
     where += " AND i.date < ?";
@@ -103,7 +104,7 @@ export function buildItemsDatesQuery(filters: ItemsFilters): SqlStatement {
 
 // ---------- 2. 期内条目（/api/items 第二层） ----------
 
-/** 指定日期集合内的条目（company/category 两层过滤继续生效）；期内按 #N 升序，期之间新→旧 */
+/** 指定日期集合内的条目（company/category 两层过滤继续生效）；期内按 #N 升序，期之间新→旧；仅 published=1（spec10） */
 export function buildItemsForDatesQuery(dates: string[], filters: ItemsFilters): SqlStatement {
   if (dates.length === 0) throw new Error("buildItemsForDatesQuery: dates 不能为空（调用方应短路）");
   const placeholders = dates.map(() => "?").join(",");
@@ -115,6 +116,7 @@ export function buildItemsForDatesQuery(dates: string[], filters: ItemsFilters):
       " i.primary_link, i.summary, i.related_links, i.enrich_state" +
       " FROM items i" +
       ` WHERE i.date IN (${placeholders})` +
+      " AND i.published = 1" +
       cc.sql +
       qc.sql +
       " ORDER BY i.date DESC, i.sequence_int ASC, i.id ASC",
@@ -141,16 +143,17 @@ export function buildOwnersForItemsQuery(itemIds: string[]): SqlStatement {
 
 // ---------- 4. 公司索引（/api/companies） ----------
 
-/** 全公司列表 + total/last30d/lastEventDate 统计；total 倒序（同数按 id 稳定序） */
+/** 全公司列表 + total/last30d/lastEventDate 统计；total 倒序（同数按 id 稳定序）；统计侧 JOIN items 过滤 published=1（spec10） */
 export function buildCompaniesIndexQuery(input: { last30dFrom: string }): SqlStatement {
   return {
     sql:
       "SELECT c.id, c.name, c.color, c.notes, c.aliases, c.status," +
-      " (SELECT COUNT(*) FROM item_companies ic WHERE ic.company_id = c.id) AS total," +
       " (SELECT COUNT(*) FROM item_companies ic JOIN items i ON i.id = ic.item_id" +
-      "   WHERE ic.company_id = c.id AND i.date >= ?) AS last30d," +
+      "   WHERE ic.company_id = c.id AND i.published = 1) AS total," +
+      " (SELECT COUNT(*) FROM item_companies ic JOIN items i ON i.id = ic.item_id" +
+      "   WHERE ic.company_id = c.id AND i.published = 1 AND i.date >= ?) AS last30d," +
       " (SELECT MAX(i.date) FROM item_companies ic JOIN items i ON i.id = ic.item_id" +
-      "   WHERE ic.company_id = c.id) AS lastEventDate" +
+      "   WHERE ic.company_id = c.id AND i.published = 1) AS lastEventDate" +
       " FROM companies c" +
       " ORDER BY total DESC, c.id ASC",
     params: [input.last30dFrom],
@@ -169,6 +172,7 @@ export interface CompanyProfileStatements {
 /**
  * 档案头四条语句（timeSpan 由 stats 的 earliest/latest 提供）：
  * 基础信息 / 统计+时间跨度 / 分类分布 / 关联公司 ≤8 按次数倒序。
+ * 统计/分布/共现均只计 published=1 条目（spec10）；基础行只查 companies 不涉及过滤。
  */
 export function buildCompanyProfileQueries(
   companyId: string,
@@ -185,15 +189,16 @@ export function buildCompanyProfileQueries(
   const stats: SqlStatement = {
     sql:
       "SELECT" +
-      " (SELECT COUNT(*) FROM item_companies WHERE company_id = ?) AS total," +
       " (SELECT COUNT(*) FROM item_companies ic JOIN items i ON i.id = ic.item_id" +
-      "   WHERE ic.company_id = ? AND i.date >= ?) AS last30d," +
+      "   WHERE ic.company_id = ? AND i.published = 1) AS total," +
+      " (SELECT COUNT(*) FROM item_companies ic JOIN items i ON i.id = ic.item_id" +
+      "   WHERE ic.company_id = ? AND i.published = 1 AND i.date >= ?) AS last30d," +
       " (SELECT MAX(i.date) FROM item_companies ic JOIN items i ON i.id = ic.item_id" +
-      "   WHERE ic.company_id = ?) AS lastEventDate," +
+      "   WHERE ic.company_id = ? AND i.published = 1) AS lastEventDate," +
       " (SELECT MIN(i.date) FROM item_companies ic JOIN items i ON i.id = ic.item_id" +
-      "   WHERE ic.company_id = ?) AS earliest," +
+      "   WHERE ic.company_id = ? AND i.published = 1) AS earliest," +
       " (SELECT MAX(i.date) FROM item_companies ic JOIN items i ON i.id = ic.item_id" +
-      "   WHERE ic.company_id = ?) AS latest",
+      "   WHERE ic.company_id = ? AND i.published = 1) AS latest",
     params: [companyId, companyId, input.last30dFrom, companyId, companyId, companyId],
   };
 
@@ -203,18 +208,21 @@ export function buildCompanyProfileQueries(
       " FROM item_companies ic" +
       " JOIN items i ON i.id = ic.item_id" +
       " WHERE ic.company_id = ?" +
+      " AND i.published = 1" +
       " GROUP BY i.category" +
       " ORDER BY count DESC, category ASC",
     params: [companyId],
   };
 
   // 关联公司 = 与该公司同条目共现的其他公司；≤8 按共现次数倒序（同数按 id 稳定序）
+  // 共现条目经 JOIN items 过滤 published=1（ic2 与 ic1 同条目，过滤 ic1 侧即过滤整对）
   const coworkers: SqlStatement = {
     sql:
       "SELECT ic2.company_id AS companyId, c2.name AS name, c2.color AS color," +
       " COUNT(*) AS count" +
       " FROM item_companies ic1" +
       " JOIN item_companies ic2 ON ic2.item_id = ic1.item_id AND ic2.company_id <> ic1.company_id" +
+      " JOIN items i ON i.id = ic1.item_id AND i.published = 1" +
       " JOIN companies c2 ON c2.id = ic2.company_id" +
       " WHERE ic1.company_id = ?" +
       " GROUP BY ic2.company_id" +

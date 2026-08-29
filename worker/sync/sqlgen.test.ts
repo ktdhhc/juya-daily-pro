@@ -347,3 +347,62 @@ describe("syncLogUpsertSql", () => {
     expectDiscipline(sql);
   });
 });
+
+// ---------- staged 写入语义（spec10 Step 1.2：同步一律 staged，人工审核后才对访客可见）----------
+
+describe("staged 写入语义（spec10）", () => {
+  it("sourcesUpsertSql staged：INSERT 列清单显式含 published 且置 0，; 收尾单语句", () => {
+    const sql = sourcesUpsertSql("2026-08-30", "# AI 早报", { staged: true });
+    expect(sql).toMatch(/^INSERT INTO sources \(date, markdown, published\) VALUES /);
+    expect(sql).toContain(", 0) ON CONFLICT(date)");
+    expectDiscipline(sql);
+  });
+
+  it("sourcesUpsertSql 缺省：INSERT 不含 published 列（落 DEFAULT 1，backfill 语义不变）", () => {
+    const sql = sourcesUpsertSql("2026-08-30", "# AI 早报");
+    expect(sql).toMatch(/^INSERT INTO sources \(date, markdown\) VALUES /);
+    expect(sql).not.toContain("published");
+  });
+
+  it("itemsUpsertSql staged：列清单显式含 published，每行 VALUES 以 0 收尾", () => {
+    const sql = itemsUpsertSql([itemOf({})], { staged: true });
+    expect(sql).toContain("enrich_state, published) VALUES ");
+    expect(sql).toContain("'ok', 0)");
+    expectDiscipline(sql);
+  });
+
+  it("itemsUpsertSql 缺省：不含 published 列（落 DEFAULT 1）", () => {
+    const sql = itemsUpsertSql([itemOf({})]);
+    expect(sql).not.toContain("published");
+  });
+
+  it("staged 多条 items：每行均以 0 收尾", () => {
+    const sql = itemsUpsertSql(
+      [itemOf({ id: "20260830-1" }), itemOf({ id: "20260830-2" })],
+      { staged: true },
+    );
+    expect(sql).toContain("'ok', 0), ('20260830-2'");
+    expect(sql).toContain("'ok', 0)");
+    expectDiscipline(sql);
+  });
+
+  it("两种形态的 DO UPDATE SET 均不含 published（重同步不翻转、publish 后不被打回）", () => {
+    for (const sql of [
+      itemsUpsertSql([itemOf({})]),
+      itemsUpsertSql([itemOf({})], { staged: true }),
+      sourcesUpsertSql("2026-08-30", "# AI 早报"),
+      sourcesUpsertSql("2026-08-30", "# AI 早报", { staged: true }),
+    ]) {
+      const updateClause = sql.slice(sql.indexOf("ON CONFLICT"));
+      expect(updateClause).not.toContain("published");
+    }
+  });
+
+  it("与既有 COALESCE role 语义并存：staged 不影响 itemCompaniesUpsertSql（同步路径传 NULL 不清 enrich role）", () => {
+    const itemsSql = itemsUpsertSql([itemOf({})], { staged: true });
+    const icSql = itemCompaniesUpsertSql([{ itemId: "20260827-1", companyId: "anthropic" }]);
+    expect(itemsSql).toContain("enrich_state, published) VALUES ");
+    expect(icSql).toContain("role = COALESCE(excluded.role, item_companies.role)");
+    expect(icSql).not.toContain("published");
+  });
+});

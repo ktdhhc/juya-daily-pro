@@ -2,7 +2,8 @@
 // 流程：registry 镜像刷新（companiesUpsertSql(REGISTRY) + companiesPruneSql，spec06 契约扩展 3，每次运行）
 // → 查 max(items.date) → fetch archive → selectSyncDates 窗口（worker/sync/pipeline.ts）
 // → 并发 3 抓新期（单期重试 1 次）→ parseIssue → matchAll（读 D1 companies，worker/sync/match.ts）
-// → SQL 累积：sources/items/item_companies/enrich_state + 每期 syncLogUpsertSql(该期, 'ok', "")
+// → SQL 累积：sources/items（staged 写入 published=0，spec10，与 POST /api/sync 同语义）
+//   + item_companies/enrich_state + 每期 syncLogUpsertSql(该期, 'ok', "")
 // → 临时 SQL 文件 → `wrangler d1 execute juya-daily --local --file` → 删除 → counts + sync_log 尾部打印。
 // 失败期（fetch/parse 抛错）不入数据 SQL，改写 syncLogUpsertSql(期, 'fetch_failed'|'parse_failed', 错误消息)，
 // 不阻塞后续期（ADR-0008）；结束有失败 → 退出码 1。
@@ -266,8 +267,8 @@ async function main(): Promise<void> {
       }
       const { ownerRows, okIds, missingIds } = matchAll(o.items, registry);
       statements.push(
-        sourcesUpsertSql(o.parsedDate, o.markdown),
-        itemsUpsertSql(o.items),
+        sourcesUpsertSql(o.parsedDate, o.markdown, { staged: true }),
+        itemsUpsertSql(o.items, { staged: true }),
         itemCompaniesUpsertSql(ownerRows),
         enrichStateUpdateSql(okIds, missingIds),
         syncLogUpsertSql(o.date, "ok", ""),
