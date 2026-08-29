@@ -8,7 +8,7 @@ import { AdminGate } from "./common/AdminGate";
 import { ApiError, fetchPendingReview, triggerSync } from "@/lib/api";
 import { clearAdminToken, isAdmin } from "@/lib/auth";
 
-export type HeaderActive = "daily" | "stream" | "company" | "review";
+export type HeaderActive = "daily" | "stream" | "company" | "review" | "dashboard";
 
 interface Props {
   mainRef?: RefObject<HTMLElement | null>;
@@ -22,10 +22,12 @@ interface Props {
   onSearch?: (term: string) => void;
 }
 
-const NAV_ITEMS: { key: HeaderActive; label: string; href: string }[] = [
+const NAV_ITEMS: { key: HeaderActive; label: string; href: string; adminOnly?: boolean }[] = [
   { key: "daily", label: "日报", href: "/" },
   { key: "stream", label: "事件流", href: "/stream" },
   { key: "company", label: "公司", href: "/company" },
+  // 数据面板（spec08 3.2）：仅管理员态渲染（复用 Header 内 admin 角色态，AdminGate 升级后同步出现）
+  { key: "dashboard", label: "面板", href: "/dashboard", adminOnly: true },
 ];
 
 /** 全站共用报头（FRONTEND_DESIGN §4.1）。
@@ -143,7 +145,7 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
 
         {/* Nav 三联：宽字距，激活 3px 墨线，hover 自左展开 */}
         <nav className="h-12 hidden sm:flex items-center" aria-label="主导航">
-          {NAV_ITEMS.map((n) => (
+          {NAV_ITEMS.filter((n) => !n.adminOnly || admin).map((n) => (
             <Link
               key={n.key}
               href={n.href}

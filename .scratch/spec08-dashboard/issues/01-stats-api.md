@@ -5,6 +5,7 @@ Status: ready-for-agent
 ## What to build
 
 按 `docs/spec/spec08-dashboard.md` Step 2（2.1→2.3）执行。契约以 spec「契约（钉死）」节逐字段为准。前置：spec07 已交付 `worker/api/auth.ts` 的 `requireAdmin(envToken, headerToken)` 与 `env.ADMIN_TOKEN`。
+**修订（spec10 暂存语义落地后）**：所有 stats 查询必须只统计已发布数据——items 侧一律加 `published = 1` 过滤（daily 聚合、分类、公司 Top、enrich 分布、overview 的 items/attributed 子查询）；sources/issues 计数同加 `published = 1`；sync_log 不过滤。单测补一条「staged 条目不计入聚合」断言（构造器 SQL 含 published 过滤）。
 
 ### 2.1 查询构造器 + 组装器（纯函数，先红后绿）
 
