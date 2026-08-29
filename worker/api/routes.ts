@@ -37,6 +37,23 @@ import {
   chunkArray,
   type ItemsFilters,
 } from "./queries";
+import {
+  buildCategoryAggregateSql,
+  buildCompanyTopSql,
+  buildDailyIssuesSql,
+  buildDailyItemsSql,
+  buildEnrichDistributionSql,
+  buildOverviewCountsSql,
+  buildStatsResponse,
+  buildSyncRecentSql,
+  type CategoryRow,
+  type CompanyTopRow,
+  type DailyCountRow,
+  type EnrichRow,
+  type OverviewRow,
+  type StatsResponse,
+  type SyncRow,
+} from "./stats";
 
 export interface Env {
   DB: D1Database;
@@ -136,6 +153,10 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       return await adminMethodRoute(request, env, "POST", async () =>
         jsonOk(await reviewPublish(env, await readJsonBody(request)))
       );
+    }
+    // GET /api/stats（spec08 Step 2.2）：requireAdmin + withCache 60s 的数据面板聚合
+    if (pathname === "/api/stats") {
+      return await statsRoute(request, env);
     }
 
     const dailyDate = matchPrefix(pathname, "/api/daily/");
@@ -613,6 +634,65 @@ function adminPingRoute(request: Request, env: Env): Promise<Response> {
     return Promise.resolve(jsonError(403, "unauthorized", "缺少或错误的管理口令（x-admin-token 请求头）"));
   }
   return Promise.resolve(jsonOk({ ok: true }));
+}
+
+// ---------- 端点 8：GET /api/stats（spec08 Step 2.2，数据面板聚合）----------
+
+// 与 syncRoute/adminPingRoute 同款守卫风格：method 守卫 → requireAdmin → withCache。
+// requireAdmin 先于 withCache：未授权请求不触碰缓存（403 永不写缓存，且不读他人写入的 200 条目）。
+function statsRoute(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") {
+    return Promise.resolve(
+      jsonError(405, "method_not_allowed", `仅支持 GET（实际 ${request.method}）`, { Allow: "GET" })
+    );
+  }
+  if (!requireAdmin(env.ADMIN_TOKEN, request.headers.get("x-admin-token"))) {
+    return Promise.resolve(jsonError(403, "unauthorized", "缺少或错误的管理口令（x-admin-token 请求头）"));
+  }
+  return withCache(request, () => statsData(env));
+}
+
+// 窗口锚点：daily 近 90 天（含今天 → 今天-89）、sync 近 84 天（热力图 12 周 → 今天-83）；
+// 锚点由调用方注入构造器（stats.ts 纯函数便于测试）
+async function statsData(env: Env): Promise<Response> {
+  const overviewQ = buildOverviewCountsSql();
+  const overviewRow = await env.DB.prepare(overviewQ.sql)
+    .bind(...overviewQ.params)
+    .first<OverviewRow>();
+
+  const dailyFrom = isoDaysAgo(89);
+  const itemsQ = buildDailyItemsSql(dailyFrom);
+  const itemDaily = await env.DB.prepare(itemsQ.sql).bind(...itemsQ.params).all<DailyCountRow>();
+  const issuesQ = buildDailyIssuesSql(dailyFrom);
+  const issueDaily = await env.DB.prepare(issuesQ.sql).bind(...issuesQ.params).all<DailyCountRow>();
+
+  const categoriesQ = buildCategoryAggregateSql();
+  const categories = await env.DB.prepare(categoriesQ.sql)
+    .bind(...categoriesQ.params)
+    .all<CategoryRow>();
+
+  const companyTopQ = buildCompanyTopSql();
+  const companyTop = await env.DB.prepare(companyTopQ.sql)
+    .bind(...companyTopQ.params)
+    .all<CompanyTopRow>();
+
+  const enrichQ = buildEnrichDistributionSql();
+  const enrich = await env.DB.prepare(enrichQ.sql).bind(...enrichQ.params).all<EnrichRow>();
+
+  const syncQ = buildSyncRecentSql(isoDaysAgo(83), isoDaysAgo(0));
+  const sync = await env.DB.prepare(syncQ.sql).bind(...syncQ.params).all<SyncRow>();
+
+  const stats: StatsResponse = buildStatsResponse({
+    // 标量子查询 SELECT 恒返回一行；?? 兜底对齐 companyProfile 既有写法
+    overview: overviewRow ?? { issues: 0, items: 0, companies: 0, attributed: 0, lastSyncAt: null },
+    itemDaily: itemDaily.results,
+    issueDaily: issueDaily.results,
+    categories: categories.results,
+    companyTop: companyTop.results,
+    enrich: enrich.results,
+    sync: sync.results,
+  });
+  return jsonOk(stats);
 }
 
 // ---------- 工具 ----------
