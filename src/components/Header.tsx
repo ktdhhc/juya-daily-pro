@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 import { AdminGate } from "./common/AdminGate";
-import { ApiError, triggerSync } from "@/lib/api";
+import { ApiError, fetchPendingReview, triggerSync } from "@/lib/api";
 import { clearAdminToken, isAdmin } from "@/lib/auth";
 
-export type HeaderActive = "daily" | "stream" | "company";
+export type HeaderActive = "daily" | "stream" | "company" | "review";
 
 interface Props {
   mainRef?: RefObject<HTMLElement | null>;
@@ -55,6 +55,21 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
   const [admin, setAdmin] = useState(false);
   const [gateOpen, setGateOpen] = useState(false);
   useEffect(() => setAdmin(isAdmin()), []);
+
+  // 审核·N（spec10 3.2）：管理员态挂载时查一次待审期数；失败静默（角标缺省不显示）
+  const [pendingCount, setPendingCount] = useState(0);
+  useEffect(() => {
+    if (!admin) return;
+    let alive = true;
+    fetchPendingReview()
+      .then((p) => {
+        if (alive) setPendingCount(p.dates.length);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [admin]);
 
   // 同步按钮（spec06 B4）：POST /api/sync，运行中旋转，成功细线小条约 5s 自散，失败一行错误 + 重试
   const [syncPhase, setSyncPhase] = useState<"idle" | "running" | "ok" | "fail">("idle");
@@ -141,6 +156,17 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
         </nav>
 
         <div className="flex items-center gap-1 ml-auto">
+          {/* 审核入口（spec10 3.2）：仅管理员态渲染；待审期数 >0 时带 ·N 角标 */}
+          {admin && (
+            <Link
+              href="/review"
+              className="text-link text-xs shrink-0 mr-2"
+              aria-label={pendingCount > 0 ? `审核（${pendingCount} 期待审）` : "审核"}
+              title={pendingCount > 0 ? `${pendingCount} 期待审` : "审核"}
+            >
+              {pendingCount > 0 ? `审核·${pendingCount}` : "审核"}
+            </Link>
+          )}
           {/* 管理入口（spec07 2.3）：低调文字链，访客态点击展开口令输入条，管理员态点击退出管理 */}
           <button
             type="button"

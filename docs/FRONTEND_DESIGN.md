@@ -110,6 +110,13 @@
 - 无 logo、或 img 加载失败（onerror）的公司回退现有首字方印（实心/描边语义不变）。
 - 素材离线拉取至 `public/logos/`（`npm run logos:fetch`，映射在 `src/lib/logos.generated.ts`），运行时不请求第三方；品牌「橘」方印（§4.1）不参与，仍是站点自己的标。
 
+### 4.9 审核工作流（/review，spec10）
+
+- **待审/已决视觉语言**：条目行以「页边编号 + 状态点」起头——待审 = 朱橙点（`--accent`）+ 竖线区小字「待审 · <llm_model>」，已决（人工编辑终版，`llm_model='human-edit'`）= 墨点（`--fg`）+「已决」。点为 9px `●`，只做状态标记不做按钮；暂存期整段仍走印刷骨架（day-head + 细线），不因工作流属性改用卡片盒。
+- **徽章主次**：解析建议行以「现状 / 建议」并排对比——现状 = 钤印原样（role 未定 → `grayscale(1) + opacity .55` 灰显）；建议 = 钤印 + 主次小徽章（`--radius-control`）：`primary 主导` 用强调色实底（accent 底 + 纸色字，与「实心印=主公司」同一语义），`partner 合作`/`subject 被报道` 弱化为 `--tag-bg` 底 + `--fg-muted` 字。不发明 pill，不引入新配色。
+- **编辑控件**：只复用既有语言——归属行 = 钤印 + 公司名 + 原生 `select`（`.control-input` 收窄变体）+「移除」文字链；「新增归属」= `.control-input` 搜索 + `.overlay-panel` 浮层下拉（`.facet-row` 行）。变更即提交（PATCH），行内 `aria-busy`，失败回滚 + `--accent` 一行错误；primary ≤1 由前端先拦（他行自动让位），不弹确认框。
+- **发布确认的反馈形态**：底部 sticky 细线条（纸面 blur + 上缘 1px 细线），期勾选用原生 checkbox（`accent-color: --accent`）默认全选；「确认入库 · N 期」为强调色实底小按钮（印章语义，`--radius-control`）。成功 = 细线小条「● 入库 N 期 · M 条」约 5s 自散，失败 = 一行错误 + 重试文字链——全部复用报头同步反馈语言（§4.1 sync strip），已发布期重拉后自然消失，不做庆祝动效。
+
 ## 5. 动效规则
 
 | 场景 | 规格 |

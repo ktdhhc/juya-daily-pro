@@ -127,20 +127,145 @@ export function triggerSync(): Promise<SyncResponse> {
   return request<SyncResponse>("/api/sync", { method: "POST" });
 }
 
+// ══════════════════════════════════════════════════════
+// 审核工作流（spec10 票 03）：四端点封装。
+// 响应形状以 worker/api/parse.ts 实际交付类型为准（PendingPayload / ParseOutcome /
+// PatchOutcome / PublishOutcome，逐字段对齐），全部 requireAdmin。
+// ══════════════════════════════════════════════════════
+
+/** 归属主次（CONTEXT.md Role：primary=主导方、partner=合作方、subject=被报道对象） */
+export type ReviewRole = "primary" | "partner" | "subject";
+
+/** GET /api/review/pending 条目上的现归属（role=null = 未定主次，UI 灰显） */
+export interface PendingOwner {
+  companyId: string;
+  name: string;
+  color: string;
+  role: ReviewRole | null;
+}
+
+/** 条目上的解析建议（llmModel='human-edit' = 人工编辑终版，publish 重放它） */
+export interface PendingProposal {
+  owners: { companyId: string; role: ReviewRole }[];
+  llmModel: string;
+}
+
+/** 候选公司建议（companies.yaml 入册素材） */
+export interface PendingCandidate {
+  id: string;
+  name: string;
+  aliases: string[];
+  confidence: string; // high / mid / low
+  reason: string;
+}
+
+/** GET /api/review/pending 条目（candidate = source_item_id 指向该条目的首个 pending 候选） */
+export interface PendingItem {
+  id: string; // YYYYMMDD-N
+  title: string;
+  summary: string;
+  category: string;
+  tag: string; // #N
+  owners: PendingOwner[];
+  proposal: PendingProposal | null;
+  candidate: PendingCandidate | null;
+}
+
+export interface PendingDateGroup {
+  date: string; // YYYY-MM-DD，升序
+  items: PendingItem[];
+}
+
+/** GET /api/review/pending 响应（dates 日期升序 + pending 候选全量） */
+export interface PendingPayload {
+  dates: PendingDateGroup[];
+  candidates: Array<PendingCandidate & { sourceItemId: string }>;
+}
+
+/** GET /api/review/pending：暂存期 + 条目归属/建议/候选（审核页数据源） */
+export function fetchPendingReview(): Promise<PendingPayload> {
+  return request<PendingPayload>("/api/review/pending");
+}
+
+/** PATCH /api/review/item body：全量归属（服务端删后插；owners 非空、primary ≤1） */
+export interface PatchOwnersBody {
+  companyId: string;
+  role: ReviewRole;
+}
+
+/** PATCH /api/review/item 响应（worker/api/parse.ts PatchOutcome） */
+export interface PatchOutcome {
+  itemId: string;
+  owners: number;
+}
+
+/** PATCH /api/review/item：重写单条目归属（仅允许 published=0 条目） */
+export function patchReviewItem(itemId: string, owners: PatchOwnersBody[]): Promise<PatchOutcome> {
+  return request<PatchOutcome>("/api/review/item", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ itemId, owners }),
+  });
+}
+
+/** POST /api/review/publish 响应（worker/api/parse.ts PublishOutcome） */
+export interface PublishOutcome {
+  publishedDates: string[];
+  itemsPublished: number;
+}
+
+/** POST /api/review/publish：按期入库（缺省 dates = 全部含暂存条目的日期） */
+export function publishReview(dates?: string[]): Promise<PublishOutcome> {
+  if (dates === undefined) {
+    return request<PublishOutcome>("/api/review/publish", { method: "POST" });
+  }
+  return request<PublishOutcome>("/api/review/publish", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dates }),
+  });
+}
+
+/** POST /api/parse 响应（worker/api/parse.ts ParseOutcome） */
+export interface ParseOutcome {
+  processed: number; // 本次成功条数
+  candidatesFound: number; // 本次落库的 company 候选数
+  remaining: number; // 圈题池未处理余量（含截断与单条失败）
+  skipped: number; // 单条 LLM 失败数
+  errors: string[]; // 失败清单（截断）
+}
+
+// 本地 workerd 实测：真实 LLM 调用可能令 fetch 长时间无响应——前端兜底超时后行内提示 + 可重试
+//（worker 侧继续处理不受影响，重复调用幂等：已有 proposal 的条目跳过）
+const PARSE_TIMEOUT_MS = 120_000;
+
+/** POST /api/parse：解析暂存条目（LLM 判主次 + 提议候选），带超时兜底 */
+export function triggerParse(): Promise<ParseOutcome> {
+  return request<ParseOutcome>("/api/parse", {
+    method: "POST",
+    signal: AbortSignal.timeout(PARSE_TIMEOUT_MS),
+  });
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
     // 管理口令自动附头（spec07 Step 2.2）：本地存有口令即全站请求带 x-admin-token，GET/POST 一律生效；
-    // headers 在 init 之后展开，保证任何调用方都无法把该头挤掉
+    // init.headers 先展开（供 POST/PATCH 带 Content-Type，spec10），token 头最后展开保证任何调用方都无法把它挤掉
     const token = getAdminToken();
     res = await fetch(path, {
       ...init,
       headers: {
         Accept: "application/json",
+        ...(init?.headers as Record<string, string> | undefined),
         ...(token ? { "x-admin-token": token } : {}),
       },
     });
-  } catch {
+  } catch (err) {
+    // AbortSignal.timeout 中止 → TimeoutError（DOMException）：与网络不可达区分提示
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new ApiError("timeout", 0, "请求超时，请稍后重试");
+    }
     throw new ApiError("network", 0, "网络不可达，请检查连接后重试");
   }
   if (!res.ok) {
