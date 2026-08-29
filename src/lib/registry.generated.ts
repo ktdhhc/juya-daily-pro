@@ -60,7 +60,9 @@ export const REGISTRY: Company[] = [
       "阿里云百炼",
       "Token Plan",
       "千问AI平台",
-      "灵骏"
+      "灵骏",
+      "ModelScope",
+      "通义"
     ],
     "color": "#FF6A00",
     "status": "active",
@@ -178,7 +180,7 @@ export const REGISTRY: Company[] = [
     "notes": "海螺 / MiniMax"
   },
   {
-    "id": "modelscope",
+    "id": "modelbest",
     "name": "面壁智能",
     "aliases": [
       "面壁",
@@ -232,23 +234,26 @@ export const REGISTRY: Company[] = [
       "腾讯",
       "Tencent",
       "Tencent Hunyuan",
-      "Hy3"
+      "Hy3",
+      "WorkBuddy"
     ],
     "color": "#00C9FF",
     "status": "active",
-    "notes": "混元"
+    "notes": "混元 / WorkBuddy"
   },
   {
-    "id": "internlm",
-    "name": "InternLM",
+    "id": "shanghaiailab",
+    "name": "上海人工智能实验室",
     "aliases": [
+      "上海人工智能实验室",
+      "上海AI实验室",
       "InternLM",
       "Intern-S2",
-      "上海AI实验室"
+      "书生"
     ],
     "color": "#1B1B3A",
     "status": "active",
-    "notes": "书生多模态模型"
+    "notes": "书生大模型"
   },
   {
     "id": "databricks",
@@ -305,25 +310,16 @@ export const REGISTRY: Company[] = [
     "notes": "模型聚合 API"
   },
   {
-    "id": "amp",
-    "name": "Amp",
+    "id": "sourcegraph",
+    "name": "Sourcegraph",
     "aliases": [
+      "Sourcegraph",
       "Amp",
       "ampcode"
     ],
     "color": "#0EA5E9",
     "status": "active",
-    "notes": "Agent 编程工具"
-  },
-  {
-    "id": "trae",
-    "name": "TRAE",
-    "aliases": [
-      "TRAE"
-    ],
-    "color": "#A855F7",
-    "status": "active",
-    "notes": "字节系 AI IDE"
+    "notes": "Amp 编程智能体"
   },
   {
     "id": "firecrawl",
@@ -347,23 +343,149 @@ export const REGISTRY: Company[] = [
     "notes": "Web 研究 API"
   },
   {
-    "id": "happyoyster",
-    "name": "HappyOyster",
+    "id": "zhipu",
+    "name": "智谱",
     "aliases": [
-      "HappyOyster"
+      "智谱",
+      "Zhipu",
+      "Z.ai",
+      "GLM",
+      "ChatGLM",
+      "bigmodel"
     ],
-    "color": "#F97316",
+    "color": "#3859FF",
     "status": "active",
-    "notes": "实时交互世界模型"
+    "notes": "GLM 厂商"
   },
   {
-    "id": "workbuddy",
-    "name": "WorkBuddy",
+    "id": "deepseek",
+    "name": "深度求索",
     "aliases": [
-      "WorkBuddy"
+      "DeepSeek",
+      "深度求索"
     ],
-    "color": "#F59E0B",
+    "color": "#4D6BFE",
     "status": "active",
-    "notes": "通用智能体"
+    "notes": "DeepSeek 厂商"
+  },
+  {
+    "id": "bytedance",
+    "name": "字节跳动",
+    "aliases": [
+      "ByteDance",
+      "字节跳动",
+      "豆包",
+      "Doubao",
+      "TRAE",
+      "火山引擎",
+      "Volcano Engine"
+    ],
+    "color": "#325AB4",
+    "status": "active",
+    "notes": "豆包 / TRAE / 火山引擎"
+  },
+  {
+    "id": "xiaomi",
+    "name": "小米",
+    "aliases": [
+      "小米",
+      "Xiaomi",
+      "玄戒"
+    ],
+    "color": "#FF6900",
+    "status": "active",
+    "notes": "玄戒芯片 / 端侧 AI"
+  },
+  {
+    "id": "antgroup",
+    "name": "蚂蚁集团",
+    "aliases": [
+      "蚂蚁集团",
+      "蚂蚁",
+      "Ant Group",
+      "百灵",
+      "Ling-"
+    ],
+    "color": "#1677FF",
+    "status": "active",
+    "notes": "百灵大模型"
+  },
+  {
+    "id": "xiaohongshu",
+    "name": "小红书",
+    "aliases": [
+      "小红书",
+      "RedNote",
+      "dots studio",
+      "dots3"
+    ],
+    "color": "#FF2442",
+    "status": "active",
+    "notes": "dots 系列模型"
+  },
+  {
+    "id": "huggingface",
+    "name": "Hugging Face",
+    "aliases": [
+      "Hugging Face",
+      "HuggingFace"
+    ],
+    "color": "#FFD21E",
+    "status": "active",
+    "notes": "模型与数据社区"
+  },
+  {
+    "id": "apple",
+    "name": "苹果",
+    "aliases": [
+      "苹果",
+      "Apple"
+    ],
+    "color": "#555555",
+    "status": "active",
+    "notes": "端侧 / 设备 AI"
+  },
+  {
+    "id": "midjourney",
+    "name": "Midjourney",
+    "aliases": [
+      "Midjourney"
+    ],
+    "color": "#1E293B",
+    "status": "active",
+    "notes": "图像模型"
+  },
+  {
+    "id": "stabilityai",
+    "name": "Stability AI",
+    "aliases": [
+      "Stability AI",
+      "Stability"
+    ],
+    "color": "#8B5CF6",
+    "status": "active",
+    "notes": "Stable Diffusion 系"
+  },
+  {
+    "id": "thinkingmachines",
+    "name": "Thinking Machines Lab",
+    "aliases": [
+      "Thinking Machines Lab",
+      "Thinking Machines"
+    ],
+    "color": "#0F766E",
+    "status": "active",
+    "notes": "Mira Murati 创办"
+  },
+  {
+    "id": "blackforestlabs",
+    "name": "Black Forest Labs",
+    "aliases": [
+      "Black Forest Labs",
+      "FLUX"
+    ],
+    "color": "#6B7280",
+    "status": "active",
+    "notes": "FLUX 图像模型"
   }
 ];
