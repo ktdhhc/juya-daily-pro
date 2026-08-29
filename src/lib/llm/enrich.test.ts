@@ -6,11 +6,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildEnrichPrompt,
   deriveRoles,
+  parseCachedResult,
   parseEnrichResponse,
   type EnrichCandidate,
   type EnrichItem,
 } from "./enrich";
-import { enrichApplySql, enrichCacheUpsertSql } from "./enrich-sql";
+import { enrichApplySql, enrichCacheUpsertSql, enrichReapplySql } from "./enrich-sql";
 
 // ---------- 真实判例 fixtures（D1 已入库；正文图片 markdown 行与断言无关，略） ----------
 
@@ -233,5 +234,59 @@ describe("enrichApplySql", () => {
     expect(lines[1]).toContain("'tencent', 'primary'");
     expect(lines[1]).toContain("'moonshot', 'subject'");
     for (const line of lines) expect(line.endsWith(";")).toBe(true);
+  });
+});
+
+describe("parseCachedResult（--apply 重应用输入校验）", () => {
+  it("合法裁决数组 → 原样返回（reason 可选）", () => {
+    const raw = JSON.stringify([
+      { companyId: "tencent", role: "primary", reason: "人工改判" },
+      { companyId: "moonshot", role: "subject" },
+    ]);
+    expect(parseCachedResult(raw)).toEqual([
+      { companyId: "tencent", role: "primary", reason: "人工改判" },
+      { companyId: "moonshot", role: "subject" },
+    ]);
+  });
+
+  it("非法输入全分支抛错：非 JSON / 非数组 / 缺 companyId / role 越枚举 / companyId 重复 / 空数组 / reason 非字符串", () => {
+    expect(() => parseCachedResult("not json")).toThrow();
+    expect(() => parseCachedResult('{"a":1}')).toThrow("顶层不是数组");
+    expect(() => parseCachedResult('[{"role":"primary"}]')).toThrow("companyId");
+    expect(() => parseCachedResult('[{"companyId":"tencent","role":"boss"}]')).toThrow("role 非法");
+    expect(() =>
+      parseCachedResult('[{"companyId":"tencent","role":"primary"},{"companyId":"tencent","role":"subject"}]'),
+    ).toThrow("重复");
+    expect(() => parseCachedResult("[]")).toThrow("为空");
+    expect(() =>
+      parseCachedResult('[{"companyId":"tencent","role":"primary","reason":42}]'),
+    ).toThrow("reason");
+  });
+});
+
+describe("enrichReapplySql（人工纠错重应用，零 LLM）", () => {
+  it("三条语句：role upsert + 清除不在裁决数组中的归属 + enrich_state 回 ok；不触碰 enrich_cache", () => {
+    const verdicts = [
+      { companyId: "google", role: "primary" as const, reason: "人工改判" },
+      { companyId: "openai", role: "partner" as const },
+    ];
+    const sql = enrichReapplySql("20260829-6", verdicts);
+    const lines = sql.split("\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain("INSERT INTO item_companies");
+    expect(lines[0]).toContain("'google', 'primary'");
+    expect(lines[1]).toContain("DELETE FROM item_companies");
+    expect(lines[1]).toContain("item_id = '20260829-6'");
+    expect(lines[1]).toContain("NOT IN ('google', 'openai')");
+    expect(lines[2]).toContain("UPDATE items SET enrich_state = 'ok'");
+    expect(lines[2]).toContain("WHERE id = '20260829-6'");
+    for (const line of lines) {
+      expect(line.endsWith(";")).toBe(true);
+      expect(line).not.toContain("enrich_cache"); // cache 是人工编辑结果本身，不可被重应用覆盖
+    }
+  });
+
+  it("空裁决数组：抛错（NOT IN () 非法 SQL，调用方须过滤）", () => {
+    expect(() => enrichReapplySql("20260829-6", [])).toThrow("不能为空");
   });
 });

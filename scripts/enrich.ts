@@ -12,12 +12,13 @@ import type { Company } from "../src/lib/schema";
 import {
   buildEnrichPrompt,
   deriveRoles,
+  parseCachedResult,
   parseEnrichResponse,
   type EnrichCandidate,
   type EnrichItem,
   type EnrichVerdict,
 } from "../src/lib/llm/enrich";
-import { enrichApplySql } from "../src/lib/llm/enrich-sql";
+import { enrichApplySql, enrichReapplySql } from "../src/lib/llm/enrich-sql";
 import { matchCandidates } from "../src/lib/matchCompanies";
 import { escapeSqlText } from "../worker/sync/sqlgen";
 import { chatJson, loadLlmConfig, runWithLimiter } from "./lib/llm";
@@ -38,12 +39,16 @@ interface Args {
   limit?: number; // --limit=N：只处理前 N 条待裁决条目
   max?: number; // --max=N：覆盖 MAX_LLM_PER_RUN（单次运行 LLM 调用上限）
   force: boolean; // --force：已有 enrich_cache 也重算
+  apply: boolean; // --apply：重应用模式（cache → item_companies，零 LLM，spec09 Step 4 人工纠错）
+  item?: string; // --item=<id>：--apply 下只处理该条（与 --limit 互斥使用）
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { force: false };
+  const args: Args = { force: false, apply: false };
   for (const a of argv) {
     if (a === "--force") args.force = true;
+    else if (a === "--apply") args.apply = true;
+    else if (a.startsWith("--item=")) args.item = a.slice("--item=".length);
     else if (a.startsWith("--limit=")) args.limit = Number(a.slice("--limit=".length));
     else if (a.startsWith("--max=")) args.max = Number(a.slice("--max=".length));
   }
@@ -97,8 +102,75 @@ interface JobResult {
   error?: string;
 }
 
+// ---------- 重应用模式（--apply，零 LLM） ----------
+
+// 人工纠错流程（spec09 Step 4）：人工 UPDATE enrich_cache.result → 本模式把裁决数组重新分发到
+// item_companies（role upsert + 清除被人工移除的归属 + enrich_state='ok'），不调 LLM、不写 cache。
+// --item=<id> 只处理该条；--limit=N 截前 N 条；缺省全量。
+function applyMode(args: Args): void {
+  const rows = queryRows<{ item_id: string; result: string }>(
+    "SELECT item_id, result FROM enrich_cache ORDER BY item_id;",
+    "enrich_cache",
+  );
+  const targets = args.item !== undefined
+    ? rows.filter((r) => r.item_id === args.item)
+    : args.limit !== undefined
+      ? rows.slice(0, args.limit)
+      : rows;
+  if (args.item !== undefined && targets.length === 0) {
+    console.error(`enrich_cache 中无该条目：${args.item}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(
+    `== enrich --apply（重应用 cache → item_companies，零 LLM）｜cache ${rows.length} 条，本次 ${targets.length} 条`,
+  );
+
+  const failures: string[] = [];
+  let applied = 0;
+  mkdirSync(path.join(ROOT, ".wrangler"), { recursive: true });
+  for (const row of targets) {
+    let verdicts: EnrichVerdict[];
+    try {
+      verdicts = parseCachedResult(row.result);
+    } catch (err) {
+      failures.push(`${row.item_id} — result 不合法：${errorMessage(err)}`);
+      continue;
+    }
+    const tmpPath = path.join(ROOT, ".wrangler", `tmp-enrich-apply-${row.item_id}-${Date.now()}.sql`);
+    writeFileSync(tmpPath, enrichReapplySql(row.item_id, verdicts) + "\n", "utf8");
+    const w = runWrangler(["d1", "execute", DB, "--local", "--file", path.relative(ROOT, tmpPath)]);
+    rmSync(tmpPath, { force: true });
+    if (!w.ok) {
+      failures.push(
+        `${row.item_id} — 写库失败：${w.stderr.split(/\r?\n/).filter((l) => l.trim() !== "").slice(-1).join(" ")}`,
+      );
+      continue;
+    }
+    const primary = verdicts.find((v) => v.role === "primary");
+    console.log(`  ${row.item_id} → primary=${primary?.companyId ?? "（无）"}｜其余 ${verdicts.length - 1} 条`);
+    applied++;
+  }
+
+  const distRows = queryRows<{ role: string | null; c: number }>(
+    "SELECT role, COUNT(*) AS c FROM item_companies GROUP BY role ORDER BY role;",
+    "role 分布",
+  );
+  console.log("== enrich --apply 摘要 ==");
+  console.log(`应用 ${applied}｜失败 ${failures.length}`);
+  for (const line of failures) console.log(`  ${line}`);
+  console.log(
+    `role 分布（全表 item_companies）: ${distRows.map((r) => `${r.role ?? "NULL"}=${r.c}`).join("，")}`,
+  );
+  if (failures.length > 0) process.exitCode = 1;
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  if (args.apply) {
+    applyMode(args); // 零 LLM：不需要 .env 配置
+    return;
+  }
   const cfg = loadLlmConfig(); // 缺 key 报错退出（消息含「检查 .env」，不打印值）
   const maxRaw = args.max ?? Number(varFromWranglerConfig("MAX_LLM_PER_RUN", "20"));
   const maxLlm = Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : 20;

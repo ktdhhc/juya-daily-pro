@@ -5,10 +5,11 @@
 import { getAdminToken } from "./auth";
 
 export interface ItemOwner {
-  /** Company Registry id（slug），owners 按 company id 排序；无 role（ADR-0014） */
+  /** Company Registry id（slug），owners 按 company id 排序；role=primary/partner/subject（spec09 裁决回填），单家归属为 null（ADR-0015） */
   company: string;
   name: string;
   color: string;
+  role: "primary" | "partner" | "subject" | null;
 }
 
 export interface StreamItem {
@@ -65,6 +66,38 @@ export interface CompanyProfileResponse {
     coworkers: { companyId: string; name: string; color: string; count: number }[]; // ≤8 按次数倒序
     timeSpan: { earliest: string; latest: string };
   };
+}
+
+// ══════════════════════════════════════════
+// 数据面板（spec08）：GET /api/stats 单端点聚合。
+// 契约形状以 worker/api/stats.ts 的 StatsResponse 实际类型为准（overview 六字段含 attributedRate）。
+// ══════════════════════════════════════════
+
+/** GET /api/stats 响应（requireAdmin；403 = unauthorized） */
+export interface StatsResponse {
+  overview: {
+    issues: number;
+    items: number;
+    companies: number;
+    attributed: number;
+    attributedRate: number;
+    /** sync_log 中 status='ok' 的 MAX(attempted_at)，"YYYY-MM-DD HH:MM:SS"（UTC）；无成功同步为 null */
+    lastSyncAt: string | null;
+  };
+  /** 近 90 天按日计数，日期升序、稀疏（无数据日缺省） */
+  daily: { date: string; items: number; issues: number }[];
+  /** 全部分类，count 倒序 */
+  categories: { category: string; count: number }[];
+  /** 公司 Top 12，count 倒序 */
+  companies: { id: string; name: string; count: number }[];
+  enrich: { ok: number; missing_owner: number; pending: number };
+  /** 近 84 天 sync_log，升序；error 为空串时已收敛为 null */
+  sync: { date: string; status: string; error: string | null }[];
+}
+
+/** GET /api/stats：数据面板聚合（spec08）。开放态（服务端未设 ADMIN_TOKEN）直出 200 */
+export function fetchStats(): Promise<StatsResponse> {
+  return request<StatsResponse>("/api/stats");
 }
 
 export class ApiError extends Error {

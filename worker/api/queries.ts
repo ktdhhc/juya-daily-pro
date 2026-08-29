@@ -126,13 +126,13 @@ export function buildItemsForDatesQuery(dates: string[], filters: ItemsFilters):
 
 // ---------- 3. 条目归属（/api/items 第三层） ----------
 
-/** 条目的公司归属（v1 无 role，ADR-0014）；调用方按 itemId 分组、组内按 company id 排序 */
+/** 条目的公司归属（spec09 起 role=primary/partner/subject，单家归属为 NULL——ADR-0015 裁决回填）；调用方按 itemId 分组、组内按 company id 排序 */
 export function buildOwnersForItemsQuery(itemIds: string[]): SqlStatement {
   if (itemIds.length === 0) throw new Error("buildOwnersForItemsQuery: itemIds 不能为空（调用方应短路）");
   const placeholders = itemIds.map(() => "?").join(",");
   return {
     sql:
-      "SELECT ic.item_id AS itemId, ic.company_id AS companyId, c.name, c.color" +
+      "SELECT ic.item_id AS itemId, ic.company_id AS companyId, ic.role, c.name, c.color" +
       " FROM item_companies ic" +
       " JOIN companies c ON c.id = ic.company_id" +
       ` WHERE ic.item_id IN (${placeholders})` +

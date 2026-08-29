@@ -26,6 +26,39 @@ export interface EnrichVerdict {
   reason?: string; // 仅 primary 携带裁决理由
 }
 
+// ---------- parseCachedResult（人工纠错重应用通道，spec09 Step 4） ----------
+
+const ROLES = ["primary", "partner", "subject"] as const;
+
+// enrich_cache.result JSON → 裁决数组（--apply 重应用的输入）。人工可编辑 result，
+// 因此校验必须严格：数组、每项 companyId 非空字符串、role ∈ 枚举、companyId 不重复；
+// 任何不合法抛错（调用方按 item 记失败，不写库）。
+export function parseCachedResult(raw: string): EnrichVerdict[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("非合法 JSON");
+  }
+  if (!Array.isArray(parsed)) throw new Error("顶层不是数组");
+  const seen = new Set<string>();
+  const out: EnrichVerdict[] = [];
+  for (const entry of parsed) {
+    if (typeof entry !== "object" || entry === null) throw new Error("存在非对象元素");
+    const { companyId, role, reason } = entry as Record<string, unknown>;
+    if (typeof companyId !== "string" || companyId === "") throw new Error("companyId 缺失或非法");
+    if (seen.has(companyId)) throw new Error(`companyId 重复：${companyId}`);
+    seen.add(companyId);
+    if (typeof role !== "string" || !ROLES.includes(role as (typeof ROLES)[number])) {
+      throw new Error(`role 非法：${String(role)}`);
+    }
+    if (reason !== undefined && typeof reason !== "string") throw new Error("reason 类型非法");
+    out.push(reason === undefined ? { companyId, role: role as EnrichVerdict["role"] } : { companyId, role: role as EnrichVerdict["role"], reason });
+  }
+  if (out.length === 0) throw new Error("裁决数组为空");
+  return out;
+}
+
 // ---------- buildEnrichPrompt ----------
 
 // bodyMd 超 4000 字符截断到 4000（spec09 2.1 硬性约定）

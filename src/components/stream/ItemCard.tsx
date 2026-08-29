@@ -24,7 +24,15 @@ export function issueAnchorHref(item: StreamItem): string {
   return item.sequenceInt > 0 ? `${base}#article-${item.sequenceInt}` : base;
 }
 
-/** 公司钤印：18px 方形（2px 圆角），有 logo 渲染真实徽标、否则首字回退，hover 浮层 tooltip */
+/** 钤印主次语言（spec09：徽章分主次，ADR-0015 裁决回填）——主导加大实印 / 参与常规实印 / 提及描边小印；tooltip 带角色词 */
+const ROLE_SEAL: Record<"primary" | "partner" | "subject", { size: number; outline: boolean; tip: string }> = {
+  primary: { size: 20, outline: false, tip: "主导" },
+  partner: { size: 18, outline: false, tip: "参与" },
+  subject: { size: 16, outline: true, tip: "提及" },
+};
+
+/** 公司钤印：18px 方形（2px 圆角），有 logo 渲染真实徽标、否则首字回退，hover 浮层 tooltip；
+ *  owner 带 role 时按主次语言渲染（spec09） */
 function OwnerSeal({
   owner,
   outline,
@@ -34,6 +42,10 @@ function OwnerSeal({
   outline?: boolean;
   size?: number;
 }) {
+  const roleStyle = owner.role ? ROLE_SEAL[owner.role] : undefined;
+  const sealSize = roleStyle?.size ?? size;
+  const isOutline = roleStyle ? roleStyle.outline : outline;
+  const tip = roleStyle ? `${owner.name} · ${roleStyle.tip}` : owner.name;
   return (
     <Link
       href={`/company/${owner.company}`}
@@ -46,10 +58,10 @@ function OwnerSeal({
         id={owner.company}
         name={owner.name}
         color={owner.color}
-        size={size}
-        fontSize={Math.round(size * 0.55)}
-        outline={outline}
-        dataTip={owner.name}
+        size={sealSize}
+        fontSize={Math.round(sealSize * 0.55)}
+        outline={isOutline}
+        dataTip={tip}
       />
     </Link>
   );

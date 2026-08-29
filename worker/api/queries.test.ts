@@ -193,6 +193,7 @@ describe("buildOwnersForItemsQuery（条目归属）", () => {
     const q = buildOwnersForItemsQuery(["20260827-3", "20260827-1"]);
     expect(q.sql).toContain("IN (?,?)");
     expect(q.sql).toContain("JOIN companies c");
+    expect(q.sql).toContain("ic.role"); // spec09：徽章主次需要 role（primary/partner/subject/null）
     expect(q.params).toEqual(["20260827-3", "20260827-1"]);
     expectConsistent(q);
   });

@@ -13,8 +13,9 @@ export interface LlmConfig {
   apiKey: string;
 }
 
-// 单次 LLM 请求超时与 429/5xx 退避间隔。
-const CHAT_TIMEOUT_MS = 30_000;
+// 单次 LLM 请求超时与 429/5xx 退避间隔。90s：推理型模型（先 reasoning_content 后答案）
+// 在候选多、推理链长时 30s 不够（2026-08-29 全量回填实测：323 条中 2 条稳定超时）。
+const CHAT_TIMEOUT_MS = 90_000;
 const RETRY_DELAY_MS = 1_500;
 
 interface ChatResponse {
@@ -22,7 +23,7 @@ interface ChatResponse {
 }
 
 // POST <base>/chat/completions：response_format json_object，Bearer 鉴权，
-// 429 / 5xx 退避重试 1 次，两次仍失败 throw（消息含状态码）。返回首条消息内容字符串。
+// 429/5xx 与超时/网络错误退避重试 1 次，两次仍失败 throw（消息含状态码）。返回首条消息内容字符串。
 export async function chatJson(cfg: LlmConfig, system: string, user: string): Promise<string> {
   const body = JSON.stringify({
     model: cfg.model,
@@ -34,16 +35,29 @@ export async function chatJson(cfg: LlmConfig, system: string, user: string): Pr
   });
 
   let status = 0;
+  let lastNetworkError = "";
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${cfg.apiKey}`,
-      },
-      body,
-      signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${cfg.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${cfg.apiKey}`,
+        },
+        body,
+        signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
+      });
+    } catch (err) {
+      // 超时 / 网络不可达：瞬时类失败，退避重试 1 次（确定性 400 等响应类错误不重试）
+      lastNetworkError = err instanceof Error ? err.message : String(err);
+      status = 0;
+      if (attempt === 1) {
+        await sleep(RETRY_DELAY_MS);
+        continue;
+      }
+      break;
+    }
     if (res.ok) {
       const data = (await res.json()) as ChatResponse;
       const content = data.choices?.[0]?.message?.content;
@@ -60,6 +74,7 @@ export async function chatJson(cfg: LlmConfig, system: string, user: string): Pr
     }
     break;
   }
+  if (status === 0) throw new Error(`LLM 请求失败：${lastNetworkError}`);
   throw new Error(`LLM 请求失败：HTTP ${status}`);
 }
 

@@ -283,11 +283,14 @@ interface ItemRow {
   enrich_state: "ok" | "missing_owner" | "pending";
 }
 
+type OwnerRole = "primary" | "partner" | "subject";
+
 interface OwnerRow {
   itemId: string;
   companyId: string;
   name: string;
   color: string;
+  role: OwnerRole | null;
 }
 
 async function listItems(url: URL, env: Env): Promise<Response> {
@@ -319,10 +322,13 @@ async function listItems(url: URL, env: Env): Promise<Response> {
     const res = await env.DB.prepare(ownersQ.sql).bind(...ownersQ.params).all<OwnerRow>();
     ownerRows.push(...res.results);
   }
-  const ownersByItem = new Map<string, { company: string; name: string; color: string }[]>();
+  const ownersByItem = new Map<
+    string,
+    { company: string; name: string; color: string; role: OwnerRole | null }[]
+  >();
   for (const r of ownerRows) {
     const list = ownersByItem.get(r.itemId) ?? [];
-    list.push({ company: r.companyId, name: r.name, color: r.color });
+    list.push({ company: r.companyId, name: r.name, color: r.color, role: r.role });
     ownersByItem.set(r.itemId, list);
   }
 
@@ -337,7 +343,7 @@ async function listItems(url: URL, env: Env): Promise<Response> {
     summary: r.summary,
     relatedLinks: parseJsonStringArray(r.related_links),
     enrichState: r.enrich_state,
-    // 契约：owners 按 company id 排序，无 role（ADR-0014）
+    // 契约：owners 按 company id 排序；role=primary/partner/subject（spec09 裁决回填），单家归属为 null（ADR-0015）
     owners: (ownersByItem.get(r.id) ?? []).sort(byCompany),
   }));
 

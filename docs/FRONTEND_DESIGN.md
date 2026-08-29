@@ -78,7 +78,7 @@
 ```
 
 - 左栏 48px 放 `#N`：18px / weight 300 等宽数字；无主链接条目（同日后续）显示 `·`。
-- **公司钤印**：18px 方形（2px 圆角），多公司并列等尺寸一行（v1 无主次，ADR-0014）；单字取公司名首字，hover tooltip 用浮层阴影 token；实心印 = 主公司，描边印 = 提及。
+- **公司钤印**：18px 方形（2px 圆角）；单字取公司名首字，hover tooltip 用浮层阴影 token。**主次语言（spec09 裁决回填后，ADR-0015）**：主导 primary = 20px 实印（加大）、参与 partner = 18px 实印、提及 subject = 16px 描边小印，tooltip 带角色词（「xx · 主导/参与/提及」）；单家归属或未裁决条目维持等尺寸一行（18px 实印）。
 - **微交互**：hover 背景变 `--bg-warm` + 左侧 2px 墨线自上而下展开（150ms）；编号数字同步转 accent 色——反馈是"被读到"的印刷感，不是上浮阴影。
 - 整卡可点击跳原期，focus 态 = 2px offset accent ring。
 
@@ -109,6 +109,14 @@
 - 钤印仍是方形 chip（2px 微圆角与尺寸体系沿用 `.seal`）：命中真实 logo 时（`LogoSeal`）渲染 `object-contain` 的 `<img>`——纸底（`--bg`）+ 1px 细边（`--rule`）+ 内边距，logo 不顶边。
 - 无 logo、或 img 加载失败（onerror）的公司回退现有首字方印（实心/描边语义不变）。
 - 素材离线拉取至 `public/logos/`（`npm run logos:fetch`，映射在 `src/lib/logos.generated.ts`），运行时不请求第三方；品牌「橘」方印（§4.1）不参与，仍是站点自己的标。
+
+### 4.8 数据面板（/dashboard，spec08）
+
+- **图表语言**：零图表库，全部内联 SVG/CSS 自绘，一律纸底墨线——折线 1.5px 单色墨（`--fg`）+ 数据点圆点、末点转强调色；墨条复用 `.dist-*` 行语言（分类全量 / 公司 Top12，公司行内嵌 LogoSeal 小印）；环形占比三段定死三色：ok=墨（`--fg`）/ missing_owner=朱橙（`--accent`）/ pending=弱化灰（`--fg-muted`），`stroke-dasharray` 分段，禁渐变禁彩虹；热力图 ok 格=墨色深浅按当日条数 4 档（`color-mix` 20%/45%/70%/100%，当日无条数按最低档），`fetch_failed`/`parse_failed`=朱橙，无记录=空格。
+- **tooltip**：`data-tip` 浮层泛化为 `.has-tip`（HTML 元素 hover 显示，视觉与 `.seal[data-tip]` 同款；元素须自持定位上下文）；SVG 图形内元素不支持 `::after`——环形段用同款视觉的受控浮层（hover 段、锚定段中角）。
+- **交互**：折线数据点与墨条行可点击跳转（`/?date=` / `/stream?category=` / `/company/<id>`）；环形段不做跳转（事件流暂无状态筛入口）；热力图近 12 周（列=周、行=周一至周日，末列=本周）仅展示不跳转。
+- **数字**：全部 tabular-nums；总览五块用 `.stat-num`/`.stat-label` + `rule-t` 分隔；最近同步附相对时间（挂载时算一次，不做定时刷新）。
+- **空态与守卫**：访客进页 = §4.6 竖排空态 + AdminGate 原地验证解锁（无需跳转）；加载失败 = §4.6 错误态 + 重试文字链。
 
 ### 4.9 审核工作流（/review，spec10）
 
