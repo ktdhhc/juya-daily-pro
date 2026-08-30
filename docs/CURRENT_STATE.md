@@ -14,7 +14,7 @@
 
 ## 当前阶段
 
-**阶段 0-5（v1 本地 MVP）+ spec06-10 全部完成（2026-08-29）**：read API + `POST /api/sync`（暂存写入）+ 角色权限基座（口令制访客/管理员）+ 编辑工作流（同步-解析-入库三段，/review 审核页）+ LLM 数据整理（323 条多家命中 role 全量回填，覆盖率 100%）+ 数据面板（/dashboard 五段自绘图表）。vitest 275 测试 + 双 typecheck + lint 门禁全绿，静态导出 46 页。**下一站部署日（阶段 6，需用户在场）**：Cloudflare 登录 → 替换 `database_id` → 生产 D1 迁移 + backfill → `wrangler deploy` + ADMIN_TOKEN/LLM_API_KEY secret → Pages + /api 同域代理 → 启用 cron（只写暂存不自动发布）。部署清单详见 `handoffs/260829-1242.md` 与 spec07-10。
+**阶段 0-5（v1 本地 MVP）+ spec06-11 全部完成（2026-08-30）**：read API + `POST /api/sync`（暂存写入、stagedDates 权威口径）+ 角色权限基座（口令制访客/管理员）+ 编辑工作流（同步-解析-入库三段，/review 审核页，已发布缺主次条目可重解析）+ LLM 数据整理（323+2 条多家命中 role 全量回填）+ 数据面板（/dashboard 五段自绘图表、热力图深浅只按当日条数）+ 阅读时间线（/ 左侧刻度轨）+ 搜索联想（/api/search/suggest）与结果页 `<mark>` 高亮。vitest 292 测试 + 双 typecheck + lint 门禁全绿，静态导出 46 页。**下一站部署日（阶段 6，需用户在场）**：Cloudflare 登录 → 替换 `database_id` → 生产 D1 迁移 + backfill → `wrangler deploy` + ADMIN_TOKEN/LLM_API_KEY secret → Pages + /api 同域代理 → 启用 cron（只写暂存不自动发布）。部署清单详见 `handoffs/260829-1242.md` 与 CURRENT_STATE 本文件。
 
 ## 范围边界
 
@@ -28,7 +28,7 @@
   + /api/review/*（pending/item/publish）+ /api/admin/ping + /api/stats；requireAdmin 守卫统一 ADMIN_TOKEN
 - 前端：Next.js 16 (App Router, output export)；本地 next dev + wrangler dev，部署日 Pages 静态托管
 - 持久化：D1（items/sources 带 published 列；companies/item_companies（含 role）/enrich_cache/sync_log/item_proposals/company_candidates）——唯一存储
-- LLM：Worker 解析段（/api/parse，MAX_LLM_PER_RUN 限流）与离线脚本（npm run enrich）共用 src/lib/llm/* 纯函数
+- LLM：Worker 解析段（/api/parse，MAX_LLM_PER_RUN 限流；已发布缺主次条目可重解析=失败补救通道）与离线脚本（npm run enrich）共用 src/lib/llm/* 纯函数；wrangler.jsonc 的 LLM_API_BASE/LLM_MODEL 必须与实际供应商一致（0830 曾因占位值打错端点 401）
 - 关键外部依赖：daily.juya.uk（archive + markdown 源）
 ```
 
@@ -56,8 +56,10 @@
 - `/stream`：facet 栏 + 按天分组条目流；钤印主次语言——主导 20px 实印 / 参与 18px / 提及 16px 描边，tooltip 带角色词（§4.2）。
 - `/company`、`/company/[id]`：印章卡片墙 + 档案头五块（不变）。
 - `/review`：暂存期列表 + 条目归属编辑（ProposalEditor）+ 候选公司区（CandidatePanel，复制 YAML / 标记）+ PublishBar 确认入库（管理员直访，访客 AdminGate 解锁）。
-- `/dashboard`：总览五块 + TrendLine（点跳 /?date=）+ RankBars（分类/公司 Top12 墨条跳转）+ EnrichDonut（环形三段）+ SyncHeatmap（12 周四档墨深）——全自绘，零图表库（§4.8）。
-- 设计契约：`docs/FRONTEND_DESIGN.md`（§4.8 数据面板、§4.9 兼审核工作流）；原型 `demo/index.html`。
+- `/dashboard`：总览五块 + TrendLine（点跳 /?date=）+ RankBars（分类/公司 Top12 墨条跳转）+ EnrichDonut（环形三段）+ SyncHeatmap（12 周 84 格全渲染，深浅只按当日条数 4 档）——全自绘，零图表库（§4.8）。
+- 阅读页时间线（§4.10）：左侧刻度轨（TimelineRail，lg+），hover 显标题、点击落位、scrollspy 高亮当前条目。
+- 搜索（§4.11）：报头输入即联想下拉（/api/search/suggest，命中高亮，↑↓/Enter）；/stream 结果页 title/summary `<mark>` 高亮（facets.query 由 loadFirst 回写）。
+- 设计契约：`docs/FRONTEND_DESIGN.md`（§4.8 数据面板、§4.10 时间线、§4.11 搜索）；原型 `demo/index.html`。
 
 ## 关键文件地图
 
