@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyProposalStatements,
   assemblePending,
+  buildPublishedMissingRolesQuery,
   patchStatements,
   proposalUpsertSql,
   proposeInsertSql,
@@ -434,5 +435,59 @@ describe("patchStatements", () => {
       expect(s.endsWith(";")).toBe(true);
       expect(s.includes("\n")).toBe(false);
     }
+  });
+});
+
+// ---------- selectParseTargets 已发布补救类合并（spec11 契约 B） ----------
+
+describe("selectParseTargets 已发布补救类合并", () => {
+  const OWNERS_830 = [
+    { ...OWNER_OPENAI, itemId: "20260830-1" },
+    { ...OWNER_ANTHROPIC, itemId: "20260830-1" },
+  ];
+
+  it("已发布多家命中条目经第二类输入并入 enrichTargets", () => {
+    const targets = selectParseTargets(
+      [],
+      OWNERS_830,
+      new Set(),
+      [item({ id: "20260830-1", title: "OpenAI 宣布与 Anthropic 合作终止", enrichState: "ok" })],
+    );
+    expect(targets.enrichTargets).toHaveLength(1);
+    expect(targets.enrichTargets[0]?.itemId).toBe("20260830-1");
+    expect(targets.enrichTargets[0]?.candidates.map((c) => c.id)).toEqual(["openai", "anthropic"]);
+  });
+
+  it("暂存类优先去重：同 id 两类并存时只算一份", () => {
+    const targets = selectParseTargets(
+      [item({ id: "20260830-1", title: "暂存版标题", enrichState: "ok" })],
+      OWNERS_830,
+      new Set(),
+      [item({ id: "20260830-1", title: "已发布版标题", enrichState: "ok" })],
+    );
+    expect(targets.enrichTargets).toHaveLength(1);
+    expect(targets.enrichTargets[0]?.itemId).toBe("20260830-1");
+  });
+
+  it("已发布类不受 proposal 跳过约束（历史 proposal + role NULL = 待补救形态，实测 20260829-6）", () => {
+    const targets = selectParseTargets(
+      [],
+      OWNERS_830,
+      new Set(["20260830-1"]),
+      [item({ id: "20260830-1", enrichState: "ok" })],
+    );
+    expect(targets.enrichTargets).toHaveLength(1);
+    expect(targets.enrichTargets[0]?.itemId).toBe("20260830-1");
+  });
+
+  it("buildPublishedMissingRolesQuery：published=1 + 无 enrich_cache + 多家命中 + role 含 NULL（不排除有 proposal 的待补救条目）", () => {
+    const q = buildPublishedMissingRolesQuery();
+    expect(q.sql).toContain("published = 1");
+    expect(q.sql).toContain("NOT EXISTS");
+    expect(q.sql).toContain("enrich_cache");
+    expect(q.sql).not.toContain("item_proposals");
+    expect(q.sql).toContain("role IS NULL");
+    expect(q.sql).toContain(">= 2");
+    expect(q.params).toEqual([]);
   });
 });

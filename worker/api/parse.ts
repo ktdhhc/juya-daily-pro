@@ -103,15 +103,20 @@ export interface ParseTargets {
   missingTargets: MissingTarget[];
 }
 
-// 圈题规则（spec10 2.3）：
+// 圈题规则（spec10 2.3；spec11 契约 B 扩展已发布补救类）：
 // - 已有 proposal（item_proposals 命中）→ 幂等跳过（判定最优先）；
 // - enrich_state='missing_owner' → missingTargets（三分类 propose）；
 // - 多家命中（item_companies ≥2）且无 proposal → enrichTargets（enrich 判 primary）；
 // - 单家命中、非 missing 的零归属 → 跳过。
+// publishedMissingItems（spec11）：已发布但缺主次的补救类输入（buildPublishedMissingRolesQuery
+// 的行），与暂存类合并圈题——同 id 两类并存时暂存类优先（去重只算一份）。
+// **proposal 幂等跳过只约束暂存类**：已发布条目没有后续 publish 节点，历史 proposal + role NULL
+// 正是待补救形态（20260829-6 实测），重解析生成新裁决并立即应用（runParse）。
 export function selectParseTargets(
   items: StagedItemInput[],
   owners: OwnerCompanyInput[],
   proposalItemIds: ReadonlySet<string>,
+  publishedMissingItems: StagedItemInput[] = [],
 ): ParseTargets {
   const ownersByItem = new Map<string, OwnerCompanyInput[]>();
   for (const o of owners) {
@@ -120,10 +125,17 @@ export function selectParseTargets(
     ownersByItem.set(o.itemId, list);
   }
 
+  // 已发布类并入（暂存类优先去重）；仅暂存类受 proposal 跳过约束
+  const stagedIds = new Set(items.map((i) => i.id));
+  const publishedOnly = new Set(
+    publishedMissingItems.filter((p) => !stagedIds.has(p.id)).map((p) => p.id),
+  );
+  const merged = [...items, ...publishedMissingItems.filter((p) => !stagedIds.has(p.id))];
+
   const enrichTargets: EnrichTarget[] = [];
   const missingTargets: MissingTarget[] = [];
-  for (const item of items) {
-    if (proposalItemIds.has(item.id)) continue; // 已有 proposal：重复 parse 幂等
+  for (const item of merged) {
+    if (proposalItemIds.has(item.id) && !publishedOnly.has(item.id)) continue; // 暂存类已有 proposal：重复 parse 幂等
     if (item.enrichState === "missing_owner") {
       missingTargets.push({
         itemId: item.id,
@@ -164,6 +176,24 @@ export function selectParseTargets(
     enrichTargets.push({ itemId: item.id, candidates });
   }
   return { enrichTargets, missingTargets };
+}
+
+// 已发布补救类圈题查询（spec11 契约 B，纯构造器）：published=1、多家命中、
+// 无 enrich_cache、且存在 role IS NULL 的归属行——解析失败后的人工补救通道。
+// 有 enrich_cache 的条目永不重圈（人工纠错走 enrich --apply，spec09）。
+// **不排除有 proposal 的条目**：已发布条目没有后续 publish 节点，历史 proposal + role NULL
+// 正是「建议未落地」的待补救形态（实测 20260829-6 演练暴露）；role 齐全的自然被 role 条件排除。
+export function buildPublishedMissingRolesQuery(): { sql: string; params: string[] } {
+  return {
+    sql:
+      "SELECT i.id, i.title, i.summary, i.body_md, i.enrich_state" +
+      " FROM items i WHERE i.published = 1" +
+      " AND NOT EXISTS (SELECT 1 FROM enrich_cache ec WHERE ec.item_id = i.id)" +
+      " AND (SELECT COUNT(*) FROM item_companies ic WHERE ic.item_id = i.id) >= 2" +
+      " AND EXISTS (SELECT 1 FROM item_companies ic2 WHERE ic2.item_id = i.id AND ic2.role IS NULL)" +
+      " ORDER BY i.id",
+    params: [],
+  };
 }
 
 // ---------- SQL 生成纯函数（company_candidates / item_proposals，spec10 Step 2.3） ----------
@@ -477,24 +507,44 @@ export interface ParseOutcome {
 
 const ERRORS_MAX = 5; // 错误清单截断上限
 
-// parse 主流程：读暂存条目（published=0）→ selectParseTargets → runWithLimiter(MAX_LLM_PER_RUN)
-// → enrich/propose 双 job → D1 batch 写 item_proposals / company_candidates。
-// 重复调用幂等：已有 proposal 的条目被 selectParseTargets 圈题时跳过。
+// parse 主流程（spec11 契约 B 扩展）：读暂存条目（published=0）+ 已发布补救类
+//（buildPublishedMissingRolesQuery：多家命中缺主次、解析失败后的重解析通道）→ selectParseTargets
+// → runWithLimiter(MAX_LLM_PER_RUN) → enrich/propose 双 job → D1 batch 写 item_proposals /
+// company_candidates；**已发布条目的 proposal 立即应用**（applyProposalStatements 直接生效 role，
+// 不等 publish——条目已入库，没有后续 publish 节点）。
+// 重复调用幂等：已有 proposal 的条目被圈题跳过；有 enrich_cache 的已发布条目由查询排除。
 export async function runParse(env: ParseEnv): Promise<ParseOutcome> {
   const cfg = llmConfigFromEnv(env);
   const maxLlm = maxLlmPerRun(env);
 
-  // 1) 暂存条目（解析段只对 published=0 生效）
+  // 1) 暂存条目（published=0）+ 已发布补救类（spec11）
   const itemRows = await env.DB.prepare(
     "SELECT id, title, summary, body_md, enrich_state FROM items WHERE published = 0 ORDER BY id",
   ).all<{ id: string; title: string; summary: string; body_md: string; enrich_state: string }>();
-  const items: StagedItemInput[] = itemRows.results.map((r) => ({
+  const stagedItems: StagedItemInput[] = itemRows.results.map((r) => ({
     id: r.id,
     title: r.title,
     summary: r.summary,
     bodyMd: r.body_md,
     enrichState: r.enrich_state,
   }));
+  const publishedQ = buildPublishedMissingRolesQuery();
+  const publishedRows = await env.DB.prepare(publishedQ.sql).all<{
+    id: string;
+    title: string;
+    summary: string;
+    body_md: string;
+    enrich_state: string;
+  }>();
+  const publishedItems: StagedItemInput[] = publishedRows.results.map((r) => ({
+    id: r.id,
+    title: r.title,
+    summary: r.summary,
+    bodyMd: r.body_md,
+    enrichState: r.enrich_state,
+  }));
+  const publishedIds = new Set(publishedItems.map((p) => p.id));
+  const items = [...stagedItems, ...publishedItems];
   const itemIds = items.map((i) => i.id);
 
   // 2) 归属（item_companies ⋈ companies，分块防 D1 绑定参数上限）
@@ -531,8 +581,13 @@ export async function runParse(env: ParseEnv): Promise<ParseOutcome> {
     for (const r of rows.results) proposalItemIds.add(r.item_id);
   }
 
-  // 4) 圈题 + MAX_LLM_PER_RUN 限流（enrich 优先、保持 id 序）
-  const { enrichTargets, missingTargets } = selectParseTargets(items, owners, proposalItemIds);
+  // 4) 圈题 + MAX_LLM_PER_RUN 限流（enrich 优先、保持 id 序；已发布补救类并入合并圈题）
+  const { enrichTargets, missingTargets } = selectParseTargets(
+    stagedItems,
+    owners,
+    proposalItemIds,
+    publishedItems,
+  );
   const itemById = new Map(items.map((i) => [i.id, i]));
   type Capped = { kind: "enrich"; target: EnrichTarget } | { kind: "propose"; target: MissingTarget };
   const capped: Capped[] = [
@@ -611,7 +666,9 @@ export async function runParse(env: ParseEnv): Promise<ParseOutcome> {
     maxLlm,
   );
 
-  // 6) D1 batch 写入（proposal upsert + 候选 DO NOTHING；空则无语句）
+  // 6) D1 batch 写入（proposal upsert + 候选 DO NOTHING；空则无语句）。
+  //    已发布条目的 proposal 立即应用（spec11 契约 B）：applyProposalStatements 直接改写
+  //    item_companies role + enrich_cache——条目已在库，无后续 publish 节点可依赖。
   const proposalRows = results.flatMap((r) => (r.ok && r.proposal !== undefined ? [r.proposal] : []));
   const candidateRows = results.flatMap((r) => (r.ok && r.candidate !== undefined ? [r.candidate] : []));
   const deduped = new Map<string, CandidateInsertRow>();
@@ -621,6 +678,16 @@ export async function runParse(env: ParseEnv): Promise<ParseOutcome> {
   const statements = [proposalUpsertSql(proposalRows), proposeInsertSql([...deduped.values()])].filter(
     (s) => s !== "",
   );
+  for (const p of proposalRows) {
+    if (!publishedIds.has(p.itemId)) continue; // 暂存类：等 publish 应用（spec10 语义）
+    statements.push(
+      ...applyProposalStatements(
+        p.itemId,
+        p.owners.map((o) => ({ companyId: o.companyId, role: o.role })),
+        p.llmModel,
+      ),
+    );
+  }
   if (statements.length > 0) {
     await env.DB.batch(statements.map((s) => env.DB.prepare(s)));
   }

@@ -66,6 +66,20 @@ function qClause(filters: ItemsFilters): WhereClause {
 
 // ---------- 1. 期集合（/api/items 第一层） ----------
 
+// 搜索联想（spec11 契约 C）：published=1、LIKE 命中 title/summary，title 命中优先、
+// 组内 date DESC、LIMIT limit。pattern 三处绑定（CASE/两列），转义同 qClause（spec06 钉死）。
+export function buildSuggestQuery(q: string, limit: number): SqlStatement {
+  const pattern = `%${escapeLikePattern(q)}%`;
+  return {
+    sql:
+      "SELECT id, date, tag, sequence_int AS sequenceInt, category, title, summary," +
+      " (CASE WHEN title LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END) AS titleHit" +
+      " FROM items WHERE published = 1 AND (title LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\')" +
+      " ORDER BY titleHit ASC, date DESC, id ASC LIMIT ?",
+    params: [pattern, pattern, pattern, limit],
+  };
+}
+
 /** 命中过滤的「期」日期列表：DISTINCT date，新→旧，LIMIT limit（默认 7）；仅 published=1（spec10） */
 export function buildItemsDatesQuery(filters: ItemsFilters): SqlStatement {
   let where = " AND i.published = 1";

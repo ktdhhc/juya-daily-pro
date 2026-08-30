@@ -34,9 +34,11 @@ import {
   buildItemsDatesQuery,
   buildItemsForDatesQuery,
   buildOwnersForItemsQuery,
+  buildSuggestQuery,
   chunkArray,
   type ItemsFilters,
 } from "./queries";
+import { summarizeMatch } from "./suggest";
 import {
   buildCategoryAggregateSql,
   buildCompanyTopSql,
@@ -134,6 +136,7 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     if (pathname === "/api/daily/latest") return await methodGuardGet(request, () => dailyLatest(env));
     if (pathname === "/api/items") return await methodGuardGet(request, () => listItems(url, env));
     if (pathname === "/api/companies") return await methodGuardGet(request, () => companiesIndex(env));
+    if (pathname === "/api/search/suggest") return await methodGuardGet(request, () => searchSuggest(url, env));
     if (pathname === "/api/sync") return await syncRoute(request, env);
     if (pathname === "/api/admin/ping") return await adminPingRoute(request, env);
     // 解析与审核四端点（spec10 Step 2.3，全部 requireAdmin；GET pending 走 methodGuard 语义但
@@ -368,6 +371,36 @@ function parseJsonStringArray(raw: string): string[] {
   } catch {
     return [];
   }
+}
+
+// ---------- 端点 3.5：/api/search/suggest（spec11 契约 C，公开、60s 缓存） ----------
+
+interface SuggestRow {
+  id: string;
+  date: string;
+  tag: string;
+  sequenceInt: number;
+  category: string;
+  title: string;
+  summary: string;
+}
+
+async function searchSuggest(url: URL, env: Env): Promise<Response> {
+  const q = optParam(url.searchParams, "q");
+  if (q === undefined) return jsonOk({ items: [] });
+  const suggestQ = buildSuggestQuery(q, 8);
+  const rows = await env.DB.prepare(suggestQ.sql).bind(...suggestQ.params).all<SuggestRow>();
+  return jsonOk({
+    items: rows.results.map((r) => ({
+      id: r.id,
+      date: r.date,
+      tag: r.tag,
+      sequenceInt: Number(r.sequenceInt),
+      category: r.category,
+      title: r.title,
+      snippet: summarizeMatch(r.summary, q),
+    })),
+  });
 }
 
 // ---------- 端点 4：/api/companies ----------
@@ -605,9 +638,13 @@ async function syncNow(env: Env): Promise<Response> {
     if (batch.length > 0) await env.DB.batch(batch);
 
     // 响应契约：ok = 窗口内全部成功；dates = 实际写入的期（成功期，升序 = 执行序）；
-    // stagedDates = 同 dates（spec10：同步一律 staged，成功期均待审核，publish 前访客不可见）；
-    // failures = 失败期与错误消息（与 dates 一起划分整个窗口）
-    return jsonOk({ ok: failures.length === 0, dates: synced, stagedDates: synced, failures });
+    // stagedDates = 同步执行后 items.published=0 的期（真有暂存的权威口径，spec11 契约 A——
+    // 重同步已发布期时不再误报「待审核」）；failures = 失败期与错误消息（与 dates 划分整个窗口）
+    const stagedRows = await env.DB.prepare(
+      "SELECT DISTINCT date FROM items WHERE published = 0 ORDER BY date ASC",
+    ).all<{ date: string }>();
+    const stagedDates = stagedRows.results.map((r) => r.date);
+    return jsonOk({ ok: failures.length === 0, dates: synced, stagedDates, failures });
   } catch (err) {
     if (err instanceof HttpError) throw err;
     throw new HttpError(500, "sync_failed", err instanceof Error ? err.message : String(err));
