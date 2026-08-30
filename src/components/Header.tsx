@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 import { AdminGate } from "./common/AdminGate";
-import { ApiError, fetchPendingReview, triggerSync } from "@/lib/api";
+import { HighlightText } from "./common/HighlightText";
+import { ApiError, fetchPendingReview, fetchSuggest, triggerSync, type SuggestItem } from "@/lib/api";
 import { clearAdminToken, isAdmin } from "@/lib/auth";
 
 export type HeaderActive = "daily" | "stream" | "company" | "review" | "dashboard";
@@ -52,6 +53,60 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
     else router.push(`/stream?query=${encodeURIComponent(t)}`);
   };
 
+  // 搜索联想（spec11 契约 F）：输入 ≥1 字符 250ms debounce 调 suggest；序号守卫保证仅
+  // 最后一次请求可渲染；↑↓ 移动选中、Enter 选中则跳条目否则提交、Esc 收起。
+  const [suggests, setSuggests] = useState<SuggestItem[]>([]);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(-1);
+  const suggestSeq = useRef(0);
+
+  useEffect(() => {
+    const q = term.trim();
+    if (!searchOpen || q === "") {
+      setSuggests([]);
+      setSuggestOpen(false);
+      setActiveIdx(-1);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const seq = ++suggestSeq.current;
+      fetchSuggest(q)
+        .then((r) => {
+          if (seq !== suggestSeq.current) return; // 竞态：仅最后一次请求生效
+          setSuggests(r.items);
+          setSuggestOpen(r.items.length > 0);
+          setActiveIdx(-1);
+        })
+        .catch(() => {}); // 联想失败静默（搜索条本身可用）
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [term, searchOpen]);
+
+  const gotoSuggestion = (s: SuggestItem) => {
+    setSuggestOpen(false);
+    setSearchOpen(false);
+    setTerm("");
+    const hash = s.sequenceInt > 0 ? `#article-${s.sequenceInt}` : "";
+    router.push(`/?date=${s.date}${hash}`);
+  };
+
+  const onSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setSuggestOpen(false);
+      setSearchOpen(false);
+    } else if (e.key === "ArrowDown" && suggestOpen && suggests.length > 0) {
+      e.preventDefault();
+      setActiveIdx((i) => (i + 1) % suggests.length);
+    } else if (e.key === "ArrowUp" && suggestOpen && suggests.length > 0) {
+      e.preventDefault();
+      setActiveIdx((i) => (i <= 0 ? suggests.length - 1 : i - 1));
+    } else if (e.key === "Enter") {
+      const picked = activeIdx >= 0 ? suggests[activeIdx] : undefined;
+      if (picked) gotoSuggestion(picked);
+      else submitSearch();
+    }
+  };
+
   // 管理员态（spec07 2.3/2.4）：挂载后读一次 localStorage（静态导出首帧按访客渲染避免水合错位）；
   // 不监听 storage 事件，跨页由各页 Header 挂载时各自读取
   const [admin, setAdmin] = useState(false);
@@ -85,7 +140,12 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
     try {
       const res = await triggerSync();
       if (res.ok) {
-        setSyncMsg(`同步 ${res.stagedDates.length} 期（待审核）${res.failures.length > 0 ? ` · 失败 ${res.failures.length}` : ""}`);
+        // spec11 契约 A：stagedDates=真有暂存的期（权威口径）；空 → 无待审，不再误报「待审核」
+        setSyncMsg(
+          res.stagedDates.length > 0
+            ? `同步 ${res.dates.length} 期 · ${res.stagedDates.length} 期待审核${res.failures.length > 0 ? ` · 失败 ${res.failures.length}` : ""}`
+            : `同步 ${res.dates.length} 期${res.failures.length > 0 ? ` · 失败 ${res.failures.length}` : ""}`
+        );
         setSyncPhase("ok");
       } else {
         const f = res.failures[0];
@@ -271,9 +331,10 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
         </div>
       </div>
 
-      {/* 报头下方全宽搜索条（spec06 B3）：fade-up，Esc 收起，Enter 跳 /stream?query= */}
+      {/* 报头下方全宽搜索条（spec06 B3；spec11 契约 F 联想）：fade-up，Esc 收起，
+          输入即联想下拉，Enter 跳选中条目或 /stream?query= */}
       {searchOpen && (
-        <div className="px-5 pb-2.5 fade-up">
+        <div className="px-5 pb-2.5 fade-up relative">
           <input
             autoFocus
             type="search"
@@ -281,12 +342,63 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
             placeholder="搜索事件：标题 / 摘要 / 正文"
             value={term}
             onChange={(e) => setTerm(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setSearchOpen(false);
-              else if (e.key === "Enter") submitSearch();
-            }}
+            onKeyDown={onSearchKeyDown}
+            onBlur={() => setSuggestOpen(false)}
             aria-label="搜索事件"
+            aria-expanded={suggestOpen}
+            role="combobox"
+            aria-controls="search-suggest-list"
           />
+          {suggestOpen && suggests.length > 0 && (
+            <div
+              id="search-suggest-list"
+              role="listbox"
+              className="absolute left-5 right-5 z-40"
+              style={{
+                top: "calc(100% - 6px)",
+                background: "var(--bg)",
+                border: "1px solid var(--rule)",
+                borderRadius: "var(--radius-control)",
+                boxShadow: "var(--shadow-overlay)",
+                overflow: "hidden",
+              }}
+            >
+              {suggests.map((s, i) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  role="option"
+                  aria-selected={i === activeIdx}
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // 抢在 blur 之前完成导航
+                    gotoSuggestion(s);
+                  }}
+                  onMouseEnter={() => setActiveIdx(i)}
+                  className="w-full text-left flex items-baseline gap-3 px-3 py-2"
+                  style={{
+                    background: i === activeIdx ? "var(--bg-warm)" : undefined,
+                    borderTop: i > 0 ? "1px solid var(--rule)" : undefined,
+                    cursor: "pointer",
+                  }}
+                >
+                  <span className="min-w-0 flex-1 text-sm" style={{ lineHeight: 1.5 }}>
+                    <HighlightText text={s.title} query={term} />
+                    {s.snippet !== "" && (
+                      <span className="block text-xs" style={{ color: "var(--fg-muted)" }}>
+                        <HighlightText text={s.snippet} query={term} />
+                      </span>
+                    )}
+                  </span>
+                  <span
+                    className="shrink-0 text-xs"
+                    style={{ color: "var(--fg-muted)", fontVariantNumeric: "tabular-nums" }}
+                  >
+                    {s.date.slice(5)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

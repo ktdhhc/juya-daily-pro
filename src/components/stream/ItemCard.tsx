@@ -4,6 +4,7 @@ import { KeyboardEvent, MouseEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogoSeal } from "../common/LogoSeal";
+import { HighlightText } from "../common/HighlightText";
 import { StreamItem } from "@/lib/api";
 
 export type ItemCardVariant = "stream" | "company";
@@ -16,6 +17,8 @@ interface Props {
   profileCompanyId?: string;
   /** 列表内序号，首屏 ≤12 项做 20ms/项 stagger 淡入 */
   index?: number;
+  /** 搜索关键词高亮（spec11 契约 F）：非空时 title/summary 命中段包 <mark>（仅 /stream 结果页传入） */
+  highlightQuery?: string;
 }
 
 /** 阅读页锚点：/?date=<date>#article-<N>（ArticleView 的 h2 id 规则） */
@@ -68,7 +71,7 @@ function OwnerSeal({
 }
 
 /** 条目卡（FRONTEND_DESIGN §4.2）：页边编号列 + 细线分隔 + 衬线标题 + 脚注钤印行，无默认卡片盒 */
-export function ItemCard({ item, variant = "stream", profileCompanyId, index }: Props) {
+export function ItemCard({ item, variant = "stream", profileCompanyId, index, highlightQuery = "" }: Props) {
   const router = useRouter();
   const hasNumber = item.sequenceInt > 0 && !!item.primaryLink;
 
@@ -107,7 +110,9 @@ export function ItemCard({ item, variant = "stream", profileCompanyId, index }: 
 
       <div className="min-w-0 flex flex-col gap-1.5">
         <h3 className="item-title flex items-start gap-1.5">
-          <span className="min-w-0">{item.title}</span>
+          <span className="min-w-0">
+            <HighlightText text={item.title} query={highlightQuery} />
+          </span>
           {item.primaryLink && (
             <a
               href={item.primaryLink}
@@ -131,7 +136,11 @@ export function ItemCard({ item, variant = "stream", profileCompanyId, index }: 
           {item.category} · {item.date.slice(5)}
         </div>
 
-        {item.summary && <p className="item-summary">{item.summary}</p>}
+        {item.summary && (
+          <p className="item-summary">
+            <HighlightText text={item.summary} query={highlightQuery} />
+          </p>
+        )}
 
         {showFoot && (
           <div className="item-foot flex items-center gap-2 pt-0.5">

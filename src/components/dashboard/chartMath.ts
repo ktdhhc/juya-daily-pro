@@ -48,20 +48,21 @@ export function pct(rate: number): string {
 
 // ---------- 热力图 ----------
 
-/** ok 格墨色深浅档位（1..4）：按当日条数 10/20/30 分界；无当日条数（undefined）或 0 → 最低档 */
+/** ok 格墨色深浅档位（0..3，spec11 D）：深浅只按当日条数——0 条/无数据=档 0（最浅中性，与无记录同色），
+ *  1-9→1、10-19→2、≥20→3 */
 export function heatmapLevel(count: number | undefined): number {
-  if (count === undefined || count < 10) return 1;
+  if (count === undefined || count <= 0) return 0;
+  if (count < 10) return 1;
   if (count < 20) return 2;
-  if (count < 30) return 3;
-  return 4;
+  return 3;
 }
 
 export interface HeatCell {
   date: string; // "YYYY-MM-DD"
-  status: "ok" | "fail" | "empty";
-  /** 墨色档位 1..4（仅 status="ok" 有意义） */
+  status: "ok" | "fail" | "none" | "future";
+  /** 墨色档位 0..3（0=最浅中性；ok 格按 count 分 1..3） */
   level: number;
-  /** tooltip 文案；empty 格为空串（不挂 tooltip） */
+  /** tooltip 文案；future 格为空串（不挂 tooltip） */
   tip: string;
 }
 
@@ -71,6 +72,7 @@ const HEATMAP_DAYS = 84; // 12 周 × 7
  * 近 12 周热力图格子：恒 84 格，列=周（升序，末列=本周）、行=周一..周日（索引 = 周 × 7 + 星期）。
  * sync 同日多行时 ok 优先（先败后成视为成功），否则取首行失败档；
  * 数据里网格外的日期（2099 演练行、远古行）不进任何格子，直接忽略。
+ * spec11 契约 D：无记录日=none（最浅中性+「无同步记录」tooltip）；未来格=future（纯空无 tooltip）。
  */
 export function buildHeatmapCells(
   sync: { date: string; status: string; error: string | null }[],
@@ -99,12 +101,12 @@ export function buildHeatmapCells(
     d.setDate(d.getDate() + i);
     const date = fmtDate(d);
     if (d.getTime() > todayMs) {
-      cells.push({ date, status: "empty", level: 1, tip: "" }); // 未来格一律空
+      cells.push({ date, status: "future", level: 0, tip: "" }); // 未来格一律空
       continue;
     }
     const s = syncByDate.get(date);
     if (!s) {
-      cells.push({ date, status: "empty", level: 1, tip: "" });
+      cells.push({ date, status: "none", level: 0, tip: `${shortDate(date)} · 无同步记录` });
       continue;
     }
     if (s.status === "ok") {
@@ -117,7 +119,7 @@ export function buildHeatmapCells(
       });
     } else {
       const summary = s.error ? ` · ${s.error.length > 40 ? `${s.error.slice(0, 40)}…` : s.error}` : "";
-      cells.push({ date, status: "fail", level: 1, tip: `${shortDate(date)} · ${s.status}${summary}` });
+      cells.push({ date, status: "fail", level: 0, tip: `${shortDate(date)} · ${s.status}${summary}` });
     }
   }
   return cells;

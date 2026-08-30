@@ -5,6 +5,7 @@ import { DailyEntry, ParsedDaily, parseMarkdown, MD_BASE } from "@/lib/juya";
 import { Header } from "./Header";
 import { DatePicker } from "./DatePicker";
 import { ArticleView, scrollToId } from "./ArticleView";
+import { TimelineRail } from "./stream/TimelineRail";
 
 interface Props {
   entries: DailyEntry[];
@@ -165,6 +166,11 @@ export function DailyPage({
           <ArticleView data={data} issueId={issueId} mainRef={mainRef} entries={entries} onSelect={handleSelect} />
         )}
       </main>
+
+      {/* 阅读时间线（spec11 §4.10）：当期条目刻度轨，lg+ 视口；骨架/错误态不出现 */}
+      {!error && !contentLoading && data !== null && (
+        <TimelineRail mainRef={mainRef} dataKey={`${issueId}-${data.date}`} />
+      )}
 
       {entries.length > 0 && (
         <DatePicker

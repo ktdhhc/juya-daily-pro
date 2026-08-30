@@ -161,6 +161,27 @@ export function triggerSync(): Promise<SyncResponse> {
 }
 
 // ══════════════════════════════════════════════════════
+// 搜索联想（spec11 契约 C/F）：GET /api/search/suggest?q=（公开、60s 服务端缓存）。
+// ══════════════════════════════════════════════════════
+
+/** 联想条目：snippet = summary 命中片段（服务端 summarizeMatch 截取，前后各约 40 字符） */
+export interface SuggestItem {
+  id: string;
+  date: string;
+  tag: string;
+  sequenceInt: number;
+  category: string;
+  title: string;
+  snippet: string;
+}
+
+/** 搜索联想（输入即查；q 为空串/无命中返回 { items: [] }） */
+export function fetchSuggest(q: string): Promise<{ items: SuggestItem[] }> {
+  const p = new URLSearchParams({ q });
+  return request<{ items: SuggestItem[] }>(`/api/search/suggest?${p.toString()}`);
+}
+
+// ══════════════════════════════════════════════════════
 // 审核工作流（spec10 票 03）：四端点封装。
 // 响应形状以 worker/api/parse.ts 实际交付类型为准（PendingPayload / ParseOutcome /
 // PatchOutcome / PublishOutcome，逐字段对齐），全部 requireAdmin。

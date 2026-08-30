@@ -6,18 +6,19 @@ import { buildHeatmapCells } from "./chartMath";
 
 const CELL = 13; // 格边长 px
 const GAP = 3; // 格间距 px
-/** ok 格墨色 4 档（FRONTEND_DESIGN §4.8：color-mix 20/45/70/100%，按当日条数） */
-const LEVEL_MIX = ["20%", "45%", "70%", "100%"];
+/** 墨色档位（spec11 契约 D：深浅只按当日条数 4 档）——档 0=最浅中性 8%（0 条/无记录同色），
+ *  1-9 条=35%、10-19 条=60%、≥20 条=100%；失败=朱橙；未来格=纯空 */
+const LEVEL_MIX = ["8%", "35%", "60%", "100%"];
 
-function cellBackground(status: "ok" | "fail" | "empty", level: number): string | undefined {
+function cellBackground(status: "ok" | "fail" | "none" | "future", level: number): string | undefined {
   if (status === "fail") return "var(--accent)";
-  if (status === "ok") return `color-mix(in srgb, var(--fg) ${LEVEL_MIX[level - 1]}, transparent)`;
-  return undefined; // 空格：无记录 / 未来格
+  if (status === "future") return undefined; // 未来格：纯空
+  return `color-mix(in srgb, var(--fg) ${LEVEL_MIX[level]}, transparent)`;
 }
 
-/** 同步热力图（spec08 Step 3.1）：CSS grid 近 12 周（列=周、行=周一至周日，末列=本周，恒 84 格）。
- *  ok 格墨色深浅 4 档按当日条数、失败格朱橙、无记录格空格；hover 格 = .has-tip tooltip
- *  「MM-DD · ok · N 条」或错误摘要；仅展示不跳转。 */
+/** 同步热力图（spec08 Step 3.1；spec11 契约 D 修订）：CSS grid 近 12 周（列=周、行=周一至周日，
+ *  末列=本周，恒 84 格）。84 格全渲染——无记录日最浅中性 + 「无同步记录」tooltip，深浅只按当日
+ *  条数四档、失败朱橙、未来格纯空；hover 格 = .has-tip tooltip；仅展示不跳转。 */
 export function SyncHeatmap({
   sync,
   daily,

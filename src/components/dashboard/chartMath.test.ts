@@ -58,24 +58,23 @@ describe("relativeTime", () => {
   });
 });
 
-describe("heatmapLevel（ok 格墨色 4 档）", () => {
-  it("0 / undefined / 1-9 → 档 1（无当日条数按最低档）", () => {
-    expect(heatmapLevel(undefined)).toBe(1);
-    expect(heatmapLevel(0)).toBe(1);
-    expect(heatmapLevel(9)).toBe(1);
+describe("heatmapLevel（深浅只按当日条数 4 档，spec11 契约 D）", () => {
+  it("0 / undefined → 档 0（最浅中性，与无记录同色）", () => {
+    expect(heatmapLevel(undefined)).toBe(0);
+    expect(heatmapLevel(0)).toBe(0);
   });
 
-  it("10-19 → 档 2；20-29 → 档 3；≥30 → 档 4", () => {
+  it("1-9 → 档 1；10-19 → 档 2；≥20 → 档 3", () => {
+    expect(heatmapLevel(1)).toBe(1);
+    expect(heatmapLevel(9)).toBe(1);
     expect(heatmapLevel(10)).toBe(2);
     expect(heatmapLevel(19)).toBe(2);
     expect(heatmapLevel(20)).toBe(3);
-    expect(heatmapLevel(29)).toBe(3);
-    expect(heatmapLevel(30)).toBe(4);
-    expect(heatmapLevel(999)).toBe(4);
+    expect(heatmapLevel(999)).toBe(3);
   });
 });
 
-describe("buildHeatmapCells（近 12 周网格）", () => {
+describe("buildHeatmapCells（近 12 周网格，spec11 修订）", () => {
   // 今天=周六 2026-08-29：本周一=08-24，窗口起点=08-24 - 77 天 = 2026-06-08（周一）
   const TODAY = new Date(2026, 7, 29);
   const START = "2026-06-08";
@@ -101,43 +100,42 @@ describe("buildHeatmapCells（近 12 周网格）", () => {
     expect(cells).toHaveLength(84);
     expect(cells[0].date).toBe(START);
     expect(cells[83].date).toBe("2026-08-30"); // 本周日
-    // 最后一列从本周一开始
     expect(cells[77].date).toBe("2026-08-24");
   });
 
-  it("ok 格按当日条数分档并生成 tip；无当日条数按最低档、tip 计 0 条", () => {
+  it("ok 格按当日条数分档（22 条→档 3）；ok 无当日数据→档 0 计 0 条", () => {
     const cells = buildHeatmapCells(sync, daily, TODAY);
     const d28 = cells.find((c) => c.date === "2026-08-28")!;
     expect(d28.status).toBe("ok");
-    expect(d28.level).toBe(3); // 22 条 → 档 3
+    expect(d28.level).toBe(3);
     expect(d28.tip).toBe("08-28 · ok · 22 条");
-    const d19 = cells.find((c) => c.date === "2026-08-19")!; // ok 但 daily 缺（parse_failed 其实）
-    const okNoDaily = cells.find((c) => c.date === "2026-08-27")!; // 无 sync 行？→ empty
-    expect(okNoDaily.status).toBe("empty");
-    // ok 但 daily 无该日 → 档 1 + 0 条
     const withOkNoDaily = buildHeatmapCells([{ date: "2026-08-10", status: "ok", error: null }], [], TODAY);
     const c = withOkNoDaily.find((x) => x.date === "2026-08-10")!;
     expect(c.status).toBe("ok");
-    expect(c.level).toBe(1);
+    expect(c.level).toBe(0);
     expect(c.tip).toBe("08-10 · ok · 0 条");
-    expect(d19.status).toBe("fail"); // parse_failed → fail 档（朱橙）
   });
 
-  it("fail 格 tip 带状态与错误摘要；空格 tip 为空串", () => {
+  it("fail 格 tip 带状态与错误摘要；无记录日=none 且带『无同步记录』tooltip（spec11）", () => {
     const cells = buildHeatmapCells(sync, daily, TODAY);
     const d20 = cells.find((c) => c.date === "2026-08-20")!;
     expect(d20.status).toBe("fail");
     expect(d20.tip).toBe("08-20 · fetch_failed · upstream 500");
-    const d19f = cells.find((c) => c.date === "2026-08-19")!;
-    expect(d19f.tip).toBe("08-19 · parse_failed");
-    expect(cells.find((c) => c.date === "2026-08-27")!.tip).toBe("");
+    const d27 = cells.find((c) => c.date === "2026-08-27")!; // 无 sync 行的过去日
+    expect(d27.status).toBe("none");
+    expect(d27.level).toBe(0);
+    expect(d27.tip).toBe("08-27 · 无同步记录");
   });
 
-  it("同日先败后成以 ok 为准；未来格（明天起）一律 empty", () => {
+  it("同日先败后成以 ok 为准；今天无记录=none；未来格=future 且 tip 空", () => {
     const cells = buildHeatmapCells(sync, daily, TODAY);
     expect(cells.find((c) => c.date === "2026-08-18")!.status).toBe("ok");
-    expect(cells.find((c) => c.date === "2026-08-29")!.status).toBe("empty"); // 今天无 sync 行
-    expect(cells.find((c) => c.date === "2026-08-30")!.status).toBe("empty");
+    const todayCell = cells.find((c) => c.date === "2026-08-29")!;
+    expect(todayCell.status).toBe("none");
+    expect(todayCell.tip).toBe("08-29 · 无同步记录");
+    const future = cells.find((c) => c.date === "2026-08-30")!;
+    expect(future.status).toBe("future");
+    expect(future.tip).toBe("");
   });
 });
 

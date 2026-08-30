@@ -101,6 +101,7 @@ export function StreamView() {
 
   const loadFirst = useCallback((f: Facets) => {
     const seq = ++reqSeq.current;
+    setFacets(f); // 首屏从 URL 起facet 也回写状态（spec11：高亮与筛选 chip 依赖 facets.query）
     setStatus("loading");
     setErrMsg("");
     setMoreError("");
@@ -292,7 +293,7 @@ export function StreamView() {
                           <span className="facet-count">{g.items.length} 条</span>
                         </div>
                         {g.items.map((it, i) => (
-                          <ItemCard key={it.id} item={it} index={base + i} />
+                          <ItemCard key={it.id} item={it} index={base + i} highlightQuery={facets.query} />
                         ))}
                       </section>
                     );
