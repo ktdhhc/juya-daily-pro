@@ -177,7 +177,7 @@ export default function ReviewPage() {
   const groups = useMemo(() => categorizePending(data ? data.dates.flatMap((g) => g.items) : []), [data]);
 
   return (
-    <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
+    <div className="min-h-dvh flex flex-col pb-24" style={{ background: "var(--bg)" }}>
       <Header active="review" />
 
       {!admin ? (
