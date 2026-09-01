@@ -491,3 +491,31 @@ describe("selectParseTargets 已发布补救类合并", () => {
     expect(q.params).toEqual([]);
   });
 });
+
+// ---------- 缺公司候选跳过闸门（spec12 走查发现：已提议候选的 missing_owner 不再重调 LLM） ----------
+
+describe("selectParseTargets 候选已提议跳过", () => {
+  it("missing_owner 且 company_candidates 已有该条目提议 → 不进 missingTargets", () => {
+    const targets = selectParseTargets(
+      [item({ id: "20260901-5", enrichState: "missing_owner" })],
+      [],
+      new Set(),
+      [],
+      new Set(["20260901-5"]),
+    );
+    expect(targets.missingTargets).toHaveLength(0);
+    expect(targets.enrichTargets).toHaveLength(0);
+  });
+
+  it("未提议的 missing_owner 照常进 missingTargets", () => {
+    const targets = selectParseTargets(
+      [item({ id: "20260901-5", enrichState: "missing_owner" })],
+      [],
+      new Set(),
+      [],
+      new Set(["20260831-1"]),
+    );
+    expect(targets.missingTargets).toHaveLength(1);
+    expect(targets.missingTargets[0]?.itemId).toBe("20260901-5");
+  });
+});

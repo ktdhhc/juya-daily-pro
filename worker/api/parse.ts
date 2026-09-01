@@ -117,6 +117,7 @@ export function selectParseTargets(
   owners: OwnerCompanyInput[],
   proposalItemIds: ReadonlySet<string>,
   publishedMissingItems: StagedItemInput[] = [],
+  candidateHandledIds: ReadonlySet<string> = new Set(),
 ): ParseTargets {
   const ownersByItem = new Map<string, OwnerCompanyInput[]>();
   for (const o of owners) {
@@ -137,6 +138,9 @@ export function selectParseTargets(
   for (const item of merged) {
     if (proposalItemIds.has(item.id) && !publishedOnly.has(item.id)) continue; // 暂存类已有 proposal：重复 parse 幂等
     if (item.enrichState === "missing_owner") {
+      // spec12：缺公司候选已提议（company_candidates.source_item_id 命中）→ 跳过——
+      // 公司未入册前条目恒为 missing_owner，不跳过则每次 parse 重复调 LLM
+      if (candidateHandledIds.has(item.id)) continue;
       missingTargets.push({
         itemId: item.id,
         title: item.title,
@@ -569,7 +573,7 @@ export async function runParse(env: ParseEnv): Promise<ParseOutcome> {
     }
   }
 
-  // 3) 已有 proposal（幂等圈题依据）
+  // 3) 已有 proposal（幂等圈题依据）+ 已提议候选的 missing 条目（spec12 跳过闸门）
   const proposalItemIds = new Set<string>();
   for (const chunk of chunkArray(itemIds, MAX_BOUND_PARAMS)) {
     const placeholders = chunk.map(() => "?").join(",");
@@ -580,6 +584,18 @@ export async function runParse(env: ParseEnv): Promise<ParseOutcome> {
       .all<{ item_id: string }>();
     for (const r of rows.results) proposalItemIds.add(r.item_id);
   }
+  const candidateHandledIds = new Set<string>();
+  if (itemIds.length > 0) {
+    for (const chunk of chunkArray(itemIds, MAX_BOUND_PARAMS)) {
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = await env.DB.prepare(
+        `SELECT source_item_id FROM company_candidates WHERE source_item_id IN (${placeholders})`,
+      )
+        .bind(...chunk)
+        .all<{ source_item_id: string }>();
+      for (const r of rows.results) candidateHandledIds.add(r.source_item_id);
+    }
+  }
 
   // 4) 圈题 + MAX_LLM_PER_RUN 限流（enrich 优先、保持 id 序；已发布补救类并入合并圈题）
   const { enrichTargets, missingTargets } = selectParseTargets(
@@ -587,6 +603,7 @@ export async function runParse(env: ParseEnv): Promise<ParseOutcome> {
     owners,
     proposalItemIds,
     publishedItems,
+    candidateHandledIds,
   );
   const itemById = new Map(items.map((i) => [i.id, i]));
   type Capped = { kind: "enrich"; target: EnrichTarget } | { kind: "propose"; target: MissingTarget };

@@ -128,7 +128,7 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
     };
   }, [admin]);
 
-  // 同步按钮（spec06 B4）：POST /api/sync，运行中旋转，成功细线小条约 5s 自散，失败一行错误 + 重试
+  // 同步按钮（spec06 B4）：POST /api/sync，运行中旋转，成功细线小条约 15s 自散，失败一行错误 + 重试
   const [syncPhase, setSyncPhase] = useState<"idle" | "running" | "ok" | "fail">("idle");
   const [syncMsg, setSyncMsg] = useState("");
   const syncingRef = useRef(false);
@@ -140,11 +140,11 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
     try {
       const res = await triggerSync();
       if (res.ok) {
-        // spec11 契约 A：stagedDates=真有暂存的期（权威口径）；空 → 无待审，不再误报「待审核」
+        // spec12 契约 A：stagedItems=同步后 published=0 条目总数；M=0 时省略后半
         setSyncMsg(
-          res.stagedDates.length > 0
-            ? `同步 ${res.dates.length} 期 · ${res.stagedDates.length} 期待审核${res.failures.length > 0 ? ` · 失败 ${res.failures.length}` : ""}`
-            : `同步 ${res.dates.length} 期${res.failures.length > 0 ? ` · 失败 ${res.failures.length}` : ""}`
+          `同步 ${res.dates.length} 期` +
+            `${res.stagedItems > 0 ? ` · ${res.stagedItems} 条待审核` : ""}` +
+            `${res.failures.length > 0 ? ` · 失败 ${res.failures.length}` : ""}`
         );
         setSyncPhase("ok");
       } else {
@@ -166,10 +166,10 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
     }
   }, []);
 
-  // 成功小条约 5s 自散；失败 / 403 提示保留至下次操作（spec06 B4）
+  // 成功小条约 15s 自散（spec12 契约 A：给「查看审核」跳转留时间）；失败 / 403 提示保留至下次操作（spec06 B4）
   useEffect(() => {
     if (syncPhase !== "ok") return;
-    const t = setTimeout(() => setSyncPhase("idle"), 5000);
+    const t = setTimeout(() => setSyncPhase("idle"), 15000);
     return () => clearTimeout(t);
   }, [syncPhase]);
 
@@ -413,7 +413,8 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
         />
       )}
 
-      {/* 同步状态细线小条（spec06 B4）：成功约 5s 自散；失败一行错误 + 重试文字链；403 提示需要管理口令 */}
+      {/* 同步状态细线小条（spec06 B4 + spec12 契约 A）：成功约 15s 自散，附「查看审核」文字链；
+          失败一行错误 + 重试文字链；403 提示需要管理口令 */}
       {syncPhase === "ok" && (
         <div
           className="rule-t px-5 py-1.5 text-xs flex items-center gap-2 fade-up"
@@ -421,7 +422,10 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
           role="status"
         >
           <span aria-hidden style={{ color: "var(--accent)" }}>●</span>
-          {syncMsg}
+          <span>{syncMsg}</span>
+          <Link href="/review" className="text-link shrink-0">
+            查看审核
+          </Link>
         </div>
       )}
       {syncPhase === "fail" && (

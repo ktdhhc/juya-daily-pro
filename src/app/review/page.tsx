@@ -5,6 +5,14 @@ import { Header } from "@/components/Header";
 import { AdminGate } from "@/components/common/AdminGate";
 import { EmptyState } from "@/components/common/EmptyState";
 import { CandidatePanel } from "@/components/review/CandidatePanel";
+import { HistoryPanel } from "@/components/review/HistoryPanel";
+import {
+  LastParseRecord,
+  ParsePanel,
+  ParsePhase,
+  loadLastParse,
+  saveLastParse,
+} from "@/components/review/ParsePanel";
 import { PublishBar } from "@/components/review/PublishBar";
 import { StagedIssueList } from "@/components/review/StagedIssueList";
 import {
@@ -21,9 +29,9 @@ import {
   triggerParse,
 } from "@/lib/api";
 import { isAdmin } from "@/lib/auth";
+import { categorizePending } from "@/lib/review";
 
 type LoadStatus = "loading" | "ready" | "empty" | "error";
-type ParsePhase = "idle" | "running" | "ok" | "fail";
 
 /** 骨架：.galley 结构同构块 + 墨迹扫过（FRONTEND_DESIGN §4.5，替代 animate-pulse） */
 function ReviewSkeleton() {
@@ -46,8 +54,9 @@ function ReviewSkeleton() {
   );
 }
 
-/** 审核工作流页（spec10 票 03）：进页（访客 AdminGate 原地解锁）→「运行解析」→ 逐条检查/编辑
- *  （PATCH 即时提交，失败回滚）→ 候选公司区（复制 YAML）→「确认入库」→ 已发布期消失。 */
+/** 审核台（spec10 票 03 + spec12 票 02 收件箱化）：进页（访客 AdminGate 原地解锁）→ 三态计数状态条
+ *  →「运行解析」（结果常驻 + 再跑一次）→ 条目按 待解析/已解析待确认/无需解析 分组（missing_owner
+ *  行内显候选）→ 候选公司区（复制 YAML）→ 确认入库（实时预览）→ 同步历史折叠区。 */
 export default function ReviewPage() {
   // 管理员态：挂载后读一次 localStorage（静态导出首帧按访客渲染，避免水合错位——同 Header 范式）
   const [admin, setAdmin] = useState(false);
@@ -84,11 +93,17 @@ export default function ReviewPage() {
       .catch(() => setCompanies([]));
   }, [admin, loadPending]);
 
-  // 「运行解析」（动线第一步）：POST /api/parse → 摘要小条（Header 同步反馈语言）→ 重拉 pending
+  // 「运行解析」（动线第一步）：响应整体落 localStorage["juya-last-parse"]（spec12 契约 C），
+  // ParsePanel 常驻展示最近一次结果；解析幂等，重跑只补漏
   const [parsePhase, setParsePhase] = useState<ParsePhase>("idle");
-  const [parseMsg, setParseMsg] = useState("");
-  const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [parseFailMsg, setParseFailMsg] = useState("");
+  const [lastParse, setLastParse] = useState<LastParseRecord | null>(null);
   const parsingRef = useRef(false);
+
+  useEffect(() => {
+    if (!admin) return;
+    setLastParse(loadLastParse()); // 挂载读最近一次解析结果（首帧不读，避免 SSR/水合错位）
+  }, [admin]);
 
   const runParse = useCallback(async () => {
     if (parsingRef.current) return;
@@ -96,15 +111,11 @@ export default function ReviewPage() {
     setParsePhase("running");
     try {
       const res = await triggerParse();
-      setParseMsg(
-        `解析 ${res.processed} 条 · 新增候选 ${res.candidatesFound} 条 · 余量 ${res.remaining}` +
-          `${res.skipped > 0 ? ` · 失败 ${res.skipped}` : ""}`
-      );
-      setParseErrors(res.errors);
-      setParsePhase("ok");
+      setLastParse(saveLastParse(res));
+      setParsePhase("idle");
       loadPending();
     } catch (e) {
-      setParseMsg(
+      setParseFailMsg(
         e instanceof ApiError ? (e.code === "unauthorized" ? "需要管理口令" : e.message) : "网络异常，请稍后重试"
       );
       setParsePhase("fail");
@@ -112,13 +123,6 @@ export default function ReviewPage() {
       parsingRef.current = false;
     }
   }, [loadPending]);
-
-  // 成功摘要小条约 5s 自散；失败保留 + 重试（spec06 B4 同款）
-  useEffect(() => {
-    if (parsePhase !== "ok") return;
-    const t = setTimeout(() => setParsePhase("idle"), 5000);
-    return () => clearTimeout(t);
-  }, [parsePhase]);
 
   // 单条目 PATCH（ProposalEditor 变更即调）：成功后本地回写 owners + proposal（llm_model='human-edit'，
   // 与 worker patchStatements 语义一致），失败直接抛错由编辑器回滚
@@ -169,11 +173,8 @@ export default function ReviewPage() {
     [loadPending]
   );
 
-  const pendingDates = useMemo(() => (data ? data.dates.map((g) => g.date) : []), [data]);
-  const stagedCount = useMemo(
-    () => (data ? data.dates.reduce((n, g) => n + g.items.length, 0) : 0),
-    [data]
-  );
+  // 三态分组（spec12 契约 B）：组序 = 待解析 → 已解析待确认 → 无需解析，即渲染序
+  const groups = useMemo(() => categorizePending(data ? data.dates.flatMap((g) => g.items) : []), [data]);
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
@@ -192,19 +193,11 @@ export default function ReviewPage() {
         </main>
       ) : (
         <>
-          {/* 工具行：待审计数 + 运行解析 */}
+          {/* 工具行：标题 + 运行解析（计数移入下方三态状态条） */}
           <div className="max-w-6xl mx-auto w-full px-5 pt-4 flex items-center gap-4">
             <h1 className="text-sm font-semibold shrink-0" style={{ color: "var(--fg)" }}>
               审核工作流
             </h1>
-            {status === "ready" && (
-              <span
-                className="text-xs min-w-0 truncate"
-                style={{ color: "var(--fg-muted)", fontVariantNumeric: "tabular-nums" }}
-              >
-                待审 {data?.dates.length ?? 0} 期 · {stagedCount} 条
-              </span>
-            )}
             <button
               type="button"
               className="text-link text-xs ml-auto shrink-0"
@@ -216,40 +209,32 @@ export default function ReviewPage() {
             </button>
           </div>
 
-          {/* 解析摘要/失败细线小条（复用 Header 同步反馈语言；失败含错误首条与重试） */}
-          {parsePhase === "ok" && (
+          {/* 三态计数状态条（spec12 契约 B）：待解析非空时朱橙提示（收件箱「需处理」语义） */}
+          {status === "ready" && (
             <div className="rule-t mt-3">
               <div
-                className="max-w-6xl mx-auto px-5 py-1.5 text-xs flex items-center gap-2 fade-up min-w-0"
+                className="max-w-6xl mx-auto px-5 py-1.5 text-xs flex items-center gap-2 flex-wrap"
                 style={{ color: "var(--fg-muted)", fontVariantNumeric: "tabular-nums" }}
                 role="status"
               >
-                <span aria-hidden style={{ color: "var(--accent)" }}>
-                  ●
+                <span style={{ color: groups.unparsed.length > 0 ? "var(--accent)" : undefined }}>
+                  待解析 {groups.unparsed.length}
                 </span>
-                <span className="shrink-0">{parseMsg}</span>
-                {parseErrors.length > 0 && (
-                  <span className="min-w-0 truncate" title={parseErrors.join("；")}>
-                    {parseErrors[0]}
-                  </span>
-                )}
+                <span aria-hidden>·</span>
+                <span>已解析待确认 {groups.parsed.length}</span>
+                <span aria-hidden>·</span>
+                <span>无需解析 {groups.noNeed.length}</span>
               </div>
             </div>
           )}
-          {parsePhase === "fail" && (
-            <div className="rule-t mt-3">
-              <div
-                className="max-w-6xl mx-auto px-5 py-1.5 text-xs flex items-center gap-2 fade-up min-w-0"
-                style={{ color: "var(--fg-muted)" }}
-                role="status"
-              >
-                <span className="min-w-0 truncate">{parseMsg}</span>
-                <button type="button" className="text-link shrink-0" onClick={() => void runParse()}>
-                  重试
-                </button>
-              </div>
-            </div>
-          )}
+
+          {/* 解析区（spec12 契约 C）：最近一次结果常驻 + 逐条错误 + 再跑一次 */}
+          <ParsePanel
+            last={lastParse}
+            phase={parsePhase}
+            failMsg={parseFailMsg}
+            onRun={() => void runParse()}
+          />
 
           <main className="flex-1 w-full max-w-6xl mx-auto px-5 py-2">
             {status === "loading" && <ReviewSkeleton />}
@@ -264,14 +249,15 @@ export default function ReviewPage() {
             )}
             {status === "ready" && data && (
               <>
-                <StagedIssueList dates={data.dates} companies={companies} onPatch={patchItem} />
+                <StagedIssueList groups={groups} companies={companies} onPatch={patchItem} />
                 <CandidatePanel candidates={data.candidates} />
               </>
             )}
+            {(status === "ready" || status === "empty") && <HistoryPanel />}
           </main>
 
           {status === "ready" && data && data.dates.length > 0 && (
-            <PublishBar dates={pendingDates} onPublish={publishDates} />
+            <PublishBar groups={data.dates} onPublish={publishDates} />
           )}
         </>
       )}

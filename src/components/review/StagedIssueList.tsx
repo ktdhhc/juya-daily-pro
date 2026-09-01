@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { CompanyIndexEntry, PatchOwnersBody, PendingDateGroup, PendingItem } from "@/lib/api";
+import { CompanyIndexEntry, PatchOwnersBody, PendingItem } from "@/lib/api";
+import { CategorizedPending, isMissingOwner } from "@/lib/review";
 import { LogoSeal } from "../common/LogoSeal";
 import { ProposalEditor } from "./ProposalEditor";
 
@@ -17,6 +18,11 @@ const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 function dayLabel(date: string): string {
   const d = new Date(date + "T00:00:00");
   return `${date} 周${WEEKDAYS[d.getDay()]}`;
+}
+
+// id = YYYYMMDD-N → "YYYY-MM-DD"（pending 条目无 date 字段，从 id 反解，形状见 src/lib/api.ts）
+function dateFromItemId(id: string): string {
+  return `${id.slice(0, 4)}-${id.slice(4, 6)}-${id.slice(6, 8)}`;
 }
 
 interface ItemProps {
@@ -61,6 +67,13 @@ function ReviewItem({ item, companies, onPatch }: ItemProps) {
       <h3 className="item-title mt-1">{item.title}</h3>
       <div className="item-meta mt-0.5">{item.category}</div>
       {item.summary && <p className="item-summary mt-1">{item.summary}</p>}
+
+      {/* missing_owner 行内候选关联提示（spec12 契约 E）：候选公司区「复制 YAML」入册后随重解析消失 */}
+      {isMissingOwner(item) && item.candidate && (
+        <div className="text-xs mt-1" style={{ color: "var(--accent)" }}>
+          候选公司：{item.candidate.name}（待入册）
+        </div>
+      )}
 
       {/* 现状 vs 建议 对比行：现状 role=null → 灰显；建议 primary 强调、partner/subject 弱化 */}
       {(item.owners.length > 0 || item.proposal !== null) && (
@@ -133,32 +146,59 @@ function ReviewItem({ item, companies, onPatch }: ItemProps) {
 }
 
 interface Props {
-  dates: PendingDateGroup[];
+  /** 三态分组（categorizePending 产出，组序即渲染序） */
+  groups: CategorizedPending;
   companies: CompanyIndexEntry[];
   onPatch: (itemId: string, owners: PatchOwnersBody[]) => Promise<unknown>;
 }
 
-/** 待审期卡片列表（spec10 票 03）：按期分节（day-head + 细线），条目行含归属对比与编辑控件 */
-export function StagedIssueList({ dates, companies, onPatch }: Props) {
+// 三态分组节（spec12 契约 B）：空组不渲染；待解析标题朱橙（收件箱「需处理」语义）
+const SECTIONS: { key: keyof CategorizedPending; label: string }[] = [
+  { key: "unparsed", label: "待解析" },
+  { key: "parsed", label: "已解析待确认" },
+  { key: "noNeed", label: "无需解析" },
+];
+
+/** 三态分组条目区（spec12 票 02）：每组标题带计数，组内按日期小节排列，条目行沿用 ReviewItem。 */
+export function StagedIssueList({ groups, companies, onPatch }: Props) {
   return (
     <div className="fade-up">
-      {dates.map((g) => (
-        <section key={g.date} aria-label={`待审期 ${g.date}`}>
-          <div className="day-head">
-            <span
-              className="text-sm font-semibold"
-              style={{ color: "var(--fg)", fontVariantNumeric: "tabular-nums" }}
-            >
-              {dayLabel(g.date)}
-            </span>
-            <span className="h-px flex-1" style={{ background: "var(--rule)" }} aria-hidden />
-            <span className="facet-count">{g.items.length} 条</span>
-          </div>
-          {g.items.map((it) => (
-            <ReviewItem key={it.id} item={it} companies={companies} onPatch={onPatch} />
-          ))}
-        </section>
-      ))}
+      {SECTIONS.map(({ key, label }, idx) => {
+        const items = groups[key];
+        if (items.length === 0) return null;
+        // 组内按日期小节（条目无 date 字段，从 id 反解）；同日期保持原序
+        const byDate = new Map<string, PendingItem[]>();
+        for (const it of items) {
+          const d = dateFromItemId(it.id);
+          const list = byDate.get(d) ?? [];
+          list.push(it);
+          byDate.set(d, list);
+        }
+        return (
+          <section key={key} aria-label={`${label}（${items.length} 条）`} className={idx > 0 ? "mt-8" : undefined}>
+            <div className="day-head">
+              <span
+                className="text-sm font-semibold"
+                style={{ color: key === "unparsed" ? "var(--accent)" : "var(--fg)" }}
+              >
+                {label}
+              </span>
+              <span className="h-px flex-1" style={{ background: "var(--rule)" }} aria-hidden />
+              <span className="facet-count">{items.length} 条</span>
+            </div>
+            {[...byDate].map(([date, list]) => (
+              <div key={date}>
+                <div className="text-xs mt-3" style={{ color: "var(--fg-light)" }}>
+                  {dayLabel(date)}
+                </div>
+                {list.map((it) => (
+                  <ReviewItem key={it.id} item={it} companies={companies} onPatch={onPatch} />
+                ))}
+              </div>
+            ))}
+          </section>
+        );
+      })}
     </div>
   );
 }

@@ -19,6 +19,7 @@ import {
   syncLogUpsertSql,
 } from "../sync/sqlgen";
 import { requireAdmin } from "./auth";
+import { reviewHistory } from "./history";
 import {
   ApiError,
   reviewPatch,
@@ -155,6 +156,13 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     if (pathname === "/api/review/publish") {
       return await adminMethodRoute(request, env, "POST", async () =>
         jsonOk(await reviewPublish(env, await readJsonBody(request)))
+      );
+    }
+    // GET /api/review/history（spec12 契约 F）：同步历史（requireAdmin 同款守卫；不进
+    // withCache——历史须实时，与解析审核四端点同策略）
+    if (pathname === "/api/review/history") {
+      return await adminMethodRoute(request, env, "GET", async () =>
+        jsonOk(await reviewHistory(env, url.searchParams.get("limit")))
       );
     }
     // GET /api/stats（spec08 Step 2.2）：requireAdmin + withCache 60s 的数据面板聚合
@@ -639,12 +647,15 @@ async function syncNow(env: Env): Promise<Response> {
 
     // 响应契约：ok = 窗口内全部成功；dates = 实际写入的期（成功期，升序 = 执行序）；
     // stagedDates = 同步执行后 items.published=0 的期（真有暂存的权威口径，spec11 契约 A——
-    // 重同步已发布期时不再误报「待审核」）；failures = 失败期与错误消息（与 dates 划分整个窗口）
+    // 重同步已发布期时不再误报「待审核」）；stagedItems = published=0 条目总数（spec12 契约 A，
+    // 与 stagedDates 同源：一条 GROUP BY 同时取 DISTINCT date 与逐期计数，总数 = 逐期 cnt 求和）；
+    // failures = 失败期与错误消息（与 dates 划分整个窗口）
     const stagedRows = await env.DB.prepare(
-      "SELECT DISTINCT date FROM items WHERE published = 0 ORDER BY date ASC",
-    ).all<{ date: string }>();
+      "SELECT date, COUNT(*) AS cnt FROM items WHERE published = 0 GROUP BY date ORDER BY date ASC",
+    ).all<{ date: string; cnt: number }>();
     const stagedDates = stagedRows.results.map((r) => r.date);
-    return jsonOk({ ok: failures.length === 0, dates: synced, stagedDates, failures });
+    const stagedItems = stagedRows.results.reduce((acc, r) => acc + Number(r.cnt), 0);
+    return jsonOk({ ok: failures.length === 0, dates: synced, stagedDates, stagedItems, failures });
   } catch (err) {
     if (err instanceof HttpError) throw err;
     throw new HttpError(500, "sync_failed", err instanceof Error ? err.message : String(err));

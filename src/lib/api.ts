@@ -151,6 +151,8 @@ export interface SyncResponse {
   dates: string[];
   /** 本次写入暂存区的成功期（published=0，待审核；publish 前访客不可见），与 dates 同序同值 */
   stagedDates: string[];
+  /** 同步后 published=0 条目总数（spec12 契约 A：Header 同步条「M 条待审核」） */
+  stagedItems: number;
   /** 失败期：{ date, error }，单期容错不阻塞后续期 */
   failures: { date: string; error: string }[];
 }
@@ -223,6 +225,9 @@ export interface PendingItem {
   owners: PendingOwner[];
   proposal: PendingProposal | null;
   candidate: PendingCandidate | null;
+  /** enrich_state（spec12 契约 B 三态判定）。契约差异：worker 票 01 未交付该字段，
+   *  缺省时由 isMissingOwner 以 owners 空 + 无 proposal 兜底判定（src/lib/review.ts） */
+  enrichState?: "ok" | "missing_owner" | "pending";
 }
 
 export interface PendingDateGroup {
@@ -286,7 +291,7 @@ export interface ParseOutcome {
   candidatesFound: number; // 本次落库的 company 候选数
   remaining: number; // 圈题池未处理余量（含截断与单条失败）
   skipped: number; // 单条 LLM 失败数
-  errors: string[]; // 失败清单（截断）
+  errors: string[]; // 失败清单（截断；实际为 "itemId: 原因" 字符串——spec12 契约 C 的对象形状未交付，见汇报）
 }
 
 // 本地 workerd 实测：真实 LLM 调用可能令 fetch 长时间无响应——前端兜底超时后行内提示 + 可重试
@@ -299,6 +304,27 @@ export function triggerParse(): Promise<ParseOutcome> {
     method: "POST",
     signal: AbortSignal.timeout(PARSE_TIMEOUT_MS),
   });
+}
+
+// ══════════════════════════════════════════════════════
+// 同步历史（spec12 契约 F）：GET /api/review/history（requireAdmin，不进缓存）。
+// ══════════════════════════════════════════════════════
+
+/** GET /api/review/history 行（行源 = sync_log 最近 N 条 + 逐期 LEFT JOIN items 统计） */
+export interface ReviewHistory {
+  date: string; // YYYY-MM-DD
+  status: string; // ok / fetch_failed / parse_failed
+  error: string | null; // 失败原因（status≠ok 时非空）
+  attemptedAt: string; // "YYYY-MM-DD HH:MM:SS"（UTC naive，展示直接截取 MM-DD HH:mm）
+  items: number; // 该期条目数（无条目期统计为 0）
+  published: number; // published=1 计数
+  attributed: number; // enrich_state='ok' 计数
+}
+
+/** GET /api/review/history：同步历史（审核台折叠区数据源，spec12 契约 F） */
+export function fetchReviewHistory(limit = 30): Promise<{ history: ReviewHistory[] }> {
+  const p = new URLSearchParams({ limit: String(limit) });
+  return request<{ history: ReviewHistory[] }>(`/api/review/history?${p.toString()}`);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
