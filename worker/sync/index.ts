@@ -7,8 +7,9 @@ import { handleApiRequest, type Env } from "../api/routes";
 export type { Env };
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    return handleApiRequest(request, env);
+  // ctx（spec13 契约 B）：线程化到 handleApiRequest，POST /api/parse 借 waitUntil 异步续跑解析作业
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    return handleApiRequest(request, env, ctx);
   },
 
   async scheduled(_controller: ScheduledController, _env: Env, _ctx: ExecutionContext): Promise<void> {

@@ -21,6 +21,13 @@ import {
   type PendingProposalRow,
   type StagedItemInput,
 } from "./parse";
+import {
+  assembleParseState,
+  emptyParseState,
+  parseBusy,
+  parseStateUpsertSql,
+  type ParseStateRow,
+} from "./parse-state";
 
 // ---------- selectParseTargets ----------
 
@@ -517,5 +524,187 @@ describe("selectParseTargets 候选已提议跳过", () => {
     );
     expect(targets.missingTargets).toHaveLength(1);
     expect(targets.missingTargets[0]?.itemId).toBe("20260901-5");
+  });
+});
+
+// ---------- spec13：解析作业状态（parse_state）纯函数 ----------
+
+// NOW 锚点（UTC）；默认行 startedAt=11:55Z，距 NOW 5 分钟
+const NOW = new Date("2026-09-02T12:00:00.000Z");
+
+function stateRow(partial: Partial<ParseStateRow> = {}): ParseStateRow {
+  return {
+    id: 1,
+    status: "running",
+    startedAt: "2026-09-02T11:55:00.000Z",
+    finishedAt: null,
+    processed: 0,
+    total: 3,
+    remaining: 3,
+    errors: "[]",
+    ...partial,
+  };
+}
+
+describe("parseBusy", () => {
+  it("running 且 startedAt 距 now <10 分钟 → busy", () => {
+    expect(parseBusy(stateRow(), NOW)).toBe(true);
+  });
+
+  it("running 但 startedAt 距 now ≥10 分钟（陈旧遗留）→ 不 busy（可覆盖重跑）", () => {
+    const stale = stateRow({ startedAt: "2026-09-02T11:49:00.000Z" }); // 11 分钟前
+    expect(parseBusy(stale, NOW)).toBe(false);
+  });
+
+  it("边界：恰好 10 分钟 → 不 busy（<10 分钟才 busy）", () => {
+    const edge = stateRow({ startedAt: "2026-09-02T11:50:00.000Z" });
+    expect(parseBusy(edge, NOW)).toBe(false);
+  });
+
+  it("running 但 startedAt=null（无法计时）→ 不 busy（按陈旧自愈放行）", () => {
+    expect(parseBusy(stateRow({ startedAt: null }), NOW)).toBe(false);
+  });
+
+  it("null 行（无记录）→ 不 busy", () => {
+    expect(parseBusy(null, NOW)).toBe(false);
+  });
+
+  it("idle / done / failed → 不 busy", () => {
+    expect(parseBusy(stateRow({ status: "idle" }), NOW)).toBe(false);
+    expect(parseBusy(stateRow({ status: "done" }), NOW)).toBe(false);
+    expect(parseBusy(stateRow({ status: "failed" }), NOW)).toBe(false);
+  });
+});
+
+describe("emptyParseState / assembleParseState", () => {
+  it("emptyParseState → idle 单行等价形态（id=1、errors='[]'）", () => {
+    expect(emptyParseState()).toEqual({
+      id: 1,
+      status: "idle",
+      startedAt: null,
+      finishedAt: null,
+      processed: 0,
+      total: 0,
+      remaining: 0,
+      errors: "[]",
+    });
+  });
+
+  it("null 行 → idle 归一载荷（余字段 null、errors 空数组）", () => {
+    expect(assembleParseState(null)).toEqual({
+      status: "idle",
+      startedAt: null,
+      finishedAt: null,
+      processed: null,
+      total: null,
+      remaining: null,
+      errors: [],
+    });
+  });
+
+  it("idle 行 → 余字段归一为 null（行内残留计数与时间戳抹平）", () => {
+    const payload = assembleParseState(
+      stateRow({
+        status: "idle",
+        startedAt: "2026-09-02T11:00:00.000Z",
+        finishedAt: "2026-09-02T11:01:00.000Z",
+        processed: 7,
+        total: 9,
+        remaining: 2,
+        errors: '["x"]',
+      }),
+    );
+    expect(payload).toEqual({
+      status: "idle",
+      startedAt: null,
+      finishedAt: null,
+      processed: null,
+      total: null,
+      remaining: null,
+      errors: [],
+    });
+  });
+
+  it("running 行 → 计数与时间戳透传 + errors JSON 解析为字符串数组", () => {
+    const payload = assembleParseState(
+      stateRow({ processed: 1, total: 3, remaining: 2, errors: '["20260829-3: 超时"]' }),
+    );
+    expect(payload).toEqual({
+      status: "running",
+      startedAt: "2026-09-02T11:55:00.000Z",
+      finishedAt: null,
+      processed: 1,
+      total: 3,
+      remaining: 2,
+      errors: ["20260829-3: 超时"],
+    });
+  });
+
+  it("done 行 → 计数保留（done 计数）", () => {
+    const payload = assembleParseState(
+      stateRow({
+        status: "done",
+        processed: 3,
+        total: 3,
+        remaining: 0,
+        finishedAt: "2026-09-02T11:59:00.000Z",
+        errors: '["b: 失败"]',
+      }),
+    );
+    expect(payload.status).toBe("done");
+    expect(payload.processed).toBe(3);
+    expect(payload.total).toBe(3);
+    expect(payload.remaining).toBe(0);
+    expect(payload.finishedAt).toBe("2026-09-02T11:59:00.000Z");
+    expect(payload.errors).toEqual(["b: 失败"]);
+  });
+
+  it("errors JSON 损坏 → []（容错不抛）", () => {
+    expect(assembleParseState(stateRow({ errors: "{oops" })).errors).toEqual([]);
+  });
+
+  it("errors JSON 非数组 / 含非字符串元素 → 归一为字符串数组（过滤非字符串）", () => {
+    expect(assembleParseState(stateRow({ errors: '{"a":1}' })).errors).toEqual([]);
+    expect(assembleParseState(stateRow({ errors: '["ok", 3, null, "bad"]' })).errors).toEqual(["ok", "bad"]);
+  });
+});
+
+describe("parseStateUpsertSql", () => {
+  it("单语句单行 upsert：id=1 全列写入 + ON CONFLICT(id) 全列更新；`;` 结尾", () => {
+    const sql = parseStateUpsertSql({
+      status: "running",
+      startedAt: "2026-09-02T12:00:00.000Z",
+      finishedAt: null,
+      processed: 0,
+      total: 3,
+      remaining: 3,
+      errors: [],
+    });
+    expect(sql).toContain(
+      "INSERT INTO parse_state (id, status, started_at, finished_at, processed, total, remaining, errors)",
+    );
+    expect(sql).toContain("VALUES (1, 'running', '2026-09-02T12:00:00.000Z', NULL, 0, 3, 3, '[]')");
+    expect(sql).toContain("ON CONFLICT(id) DO UPDATE SET");
+    for (const col of ["status", "started_at", "finished_at", "processed", "total", "remaining", "errors"]) {
+      expect(sql).toContain(`${col} = excluded.${col}`);
+    }
+    expect(sql.includes("\n")).toBe(false);
+    expect(sql.endsWith(";")).toBe(true);
+  });
+
+  it("文本转义：errors 单引号翻倍；null 时间戳 → NULL 字面量", () => {
+    const sql = parseStateUpsertSql({
+      status: "failed",
+      startedAt: null,
+      finishedAt: "2026-09-02T12:01:00.000Z",
+      processed: 0,
+      total: 0,
+      remaining: 0,
+      errors: ["boom 'quoted'"],
+    });
+    expect(sql).toContain("'[\"boom ''quoted''\"]'");
+    expect(sql).toContain(", NULL, '2026-09-02T12:01:00.000Z'");
+    expect(sql.includes("\n")).toBe(false);
+    expect(sql.endsWith(";")).toBe(true);
   });
 });

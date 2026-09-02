@@ -712,6 +712,10 @@ button.day-num:active { transform: scale(0.95); }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes overlay-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
+/* 解析运行中呼吸点标（spec13 契约 E/F）：纯 opacity 脉冲，禁发光/渐变 */
+@keyframes breath-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.breath-dot { animation: breath-pulse 1.6s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
-  .galley::after, .fade-up, .overlay-backdrop, .overlay-panel, .month-sec, .icon-spin { animation: none; }
+  .galley::after, .fade-up, .overlay-backdrop, .overlay-panel, .month-sec, .icon-spin, .breath-dot { animation: none; }
 }

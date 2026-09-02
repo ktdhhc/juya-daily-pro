@@ -184,8 +184,8 @@ export function fetchSuggest(q: string): Promise<{ items: SuggestItem[] }> {
 }
 
 // ══════════════════════════════════════════════════════
-// 审核工作流（spec10 票 03）：四端点封装。
-// 响应形状以 worker/api/parse.ts 实际交付类型为准（PendingPayload / ParseOutcome /
+// 审核工作流（spec10 票 03 + spec13 作业化）：四端点封装。
+// 响应形状以 worker/api/parse.ts 实际交付类型为准（PendingPayload / ParseStatePayload /
 // PatchOutcome / PublishOutcome，逐字段对齐），全部 requireAdmin。
 // ══════════════════════════════════════════════════════
 
@@ -235,10 +235,27 @@ export interface PendingDateGroup {
   items: PendingItem[];
 }
 
-/** GET /api/review/pending 响应（dates 日期升序 + pending 候选全量） */
+/** 解析作业状态值（spec13 契约 C，读 D1 parse_state 单行） */
+export type ParseJobStatus = "idle" | "running" | "done" | "failed";
+
+/** 解析作业状态（spec13 契约 C）：GET /api/review/pending 载荷的 parse 字段，前端所有解析状态显示以此为准。
+ *  idle 时 startedAt/finishedAt 与三个计数均为 null（worker assembleParseState 归一）；errors 恒为字符串数组 */
+export interface ParseStatePayload {
+  status: ParseJobStatus;
+  startedAt: string | null;
+  finishedAt: string | null;
+  processed: number | null; // 已处理条数（running 时用于进度 k/M；idle 为 null）
+  total: number | null; // 本轮圈题总数（idle 为 null）
+  remaining: number | null; // 圈题池未处理余量（idle 为 null）
+  errors: string[]; // 失败清单（"itemId: 原因" 字符串；作业级异常时含失败原因）
+}
+
+/** GET /api/review/pending 响应（dates 日期升序 + pending 候选全量 + 解析作业状态） */
 export interface PendingPayload {
   dates: PendingDateGroup[];
   candidates: Array<PendingCandidate & { sourceItemId: string }>;
+  /** 解析作业状态（spec13 契约 C）。可选兜底：旧 worker 未交付该字段时按 idle 处理 */
+  parse?: ParseStatePayload;
 }
 
 /** GET /api/review/pending：暂存期 + 条目归属/建议/候选（审核页数据源） */
@@ -285,25 +302,15 @@ export function publishReview(dates?: string[]): Promise<PublishOutcome> {
   });
 }
 
-/** POST /api/parse 响应（worker/api/parse.ts ParseOutcome） */
-export interface ParseOutcome {
-  processed: number; // 本次成功条数
-  candidatesFound: number; // 本次落库的 company 候选数
-  remaining: number; // 圈题池未处理余量（含截断与单条失败）
-  skipped: number; // 单条 LLM 失败数
-  errors: string[]; // 失败清单（截断；实际为 "itemId: 原因" 字符串——spec12 契约 C 的对象形状未交付，见汇报）
+/** POST /api/parse 响应（spec13 契约 B 异步作业化）：秒回启动确认 + 作业状态快照，解析本体在服务端继续 */
+export interface ParseStartResponse {
+  started: true;
+  state: ParseStatePayload;
 }
 
-// 本地 workerd 实测：真实 LLM 调用可能令 fetch 长时间无响应——前端兜底超时后行内提示 + 可重试
-//（worker 侧继续处理不受影响，重复调用幂等：已有 proposal 的条目跳过）
-const PARSE_TIMEOUT_MS = 120_000;
-
-/** POST /api/parse：解析暂存条目（LLM 判主次 + 提议候选），带超时兜底 */
-export function triggerParse(): Promise<ParseOutcome> {
-  return request<ParseOutcome>("/api/parse", {
-    method: "POST",
-    signal: AbortSignal.timeout(PARSE_TIMEOUT_MS),
-  });
+/** POST /api/parse：启动解析作业（spec13 契约 B）——秒回；另一轮在跑 → 409 { error: { code: "parse_busy" }, state } */
+export function triggerParse(): Promise<ParseStartResponse> {
+  return request<ParseStartResponse>("/api/parse", { method: "POST" });
 }
 
 // ══════════════════════════════════════════════════════

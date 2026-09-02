@@ -17,6 +17,15 @@ import { chatJson, runWithLimiter, type LlmConfig } from "../../src/lib/llm/chat
 import { buildProposePrompt, parseProposeResponse } from "../../src/lib/llm/propose";
 import { matchCandidates } from "../../src/lib/matchCompanies";
 import { escapeSqlText, itemCompaniesUpsertSql } from "../sync/sqlgen";
+import {
+  assembleParseState,
+  emptyParseState,
+  parseBusy,
+  parseStateUpsertSql,
+  type ParseStatePayload,
+  type ParseStateRow,
+  type ParseStateWrite,
+} from "./parse-state";
 import { chunkArray, MAX_BOUND_PARAMS } from "./queries";
 
 const quote = (s: string): string => `'${escapeSqlText(s)}'`;
@@ -371,6 +380,7 @@ export interface PendingDateGroup {
 export interface PendingPayload {
   dates: PendingDateGroup[]; // 日期升序
   candidates: Array<PendingCandidate & { sourceItemId: string }>; // pending 候选全量
+  parse: ParseStatePayload; // spec13 契约 C：解析作业状态（reviewPending 读 parse_state 单行附加；assemblePending 不查库）
 }
 
 function parseJsonStringArray(raw: string): string[] {
@@ -409,7 +419,7 @@ export function assemblePending(
   ownerRows: PendingOwnerRow[],
   proposalRows: PendingProposalRow[],
   candidateRows: PendingCandidateRow[],
-): PendingPayload {
+): Omit<PendingPayload, "parse"> {
   const ownersByItem = new Map<string, PendingOwner[]>();
   for (const r of ownerRows) {
     const list = ownersByItem.get(r.itemId) ?? [];
@@ -499,7 +509,7 @@ export function applyProposalStatements(
   ].filter((s) => s !== "");
 }
 
-// ---------- LLM 编排（薄 IO，不单测）：POST /api/parse ----------
+// ---------- LLM 编排（薄 IO，不单测）：POST /api/parse 异步作业（spec13 契约 B） ----------
 
 export interface ParseOutcome {
   processed: number; // 本次成功条数（enrich 出 proposal / propose 三分类成功）
@@ -511,14 +521,28 @@ export interface ParseOutcome {
 
 const ERRORS_MAX = 5; // 错误清单截断上限
 
-// parse 主流程（spec11 契约 B 扩展）：读暂存条目（published=0）+ 已发布补救类
+// 单条目标的作业类别（enrich 判 primary / propose 三分类）
+type CappedJob =
+  | { kind: "enrich"; target: EnrichTarget }
+  | { kind: "propose"; target: MissingTarget };
+
+// 启动阶段（无 LLM 调用）产出：执行体的全部输入 + total 计数。
+// spec13：圈题查询提前到启动阶段——POST /api/parse 先据此写 running(total) 并秒回响应，
+// LLM 调用延后到 ctx.waitUntil 的执行体（executeParse）。
+export interface ParseJobContext {
+  items: StagedItemInput[]; // staged + 已发布补救类合并集
+  itemById: Map<string, StagedItemInput>;
+  publishedIds: Set<string>; // 已发布补救类条目 id（proposal 立即应用判定）
+  capped: CappedJob[]; // 执行清单（MAX_LLM_PER_RUN 截断后）
+  totalTargets: number; // 圈题总数（未截断口径，与 ParseOutcome.remaining 一致）
+  registryNames: string[]; // 在册公司名清单（propose prompt 用）
+}
+
+// 启动阶段（spec11 契约 B 扩展口径不变）：读暂存条目（published=0）+ 已发布补救类
 //（buildPublishedMissingRolesQuery：多家命中缺主次、解析失败后的重解析通道）→ selectParseTargets
-// → runWithLimiter(MAX_LLM_PER_RUN) → enrich/propose 双 job → D1 batch 写 item_proposals /
-// company_candidates；**已发布条目的 proposal 立即应用**（applyProposalStatements 直接生效 role，
-// 不等 publish——条目已入库，没有后续 publish 节点）。
-// 重复调用幂等：已有 proposal 的条目被圈题跳过；有 enrich_cache 的已发布条目由查询排除。
-export async function runParse(env: ParseEnv): Promise<ParseOutcome> {
-  const cfg = llmConfigFromEnv(env);
+// 圈题 → 截断执行清单。重复调用幂等：已有 proposal 的暂存条目被圈题跳过；
+// 有 enrich_cache 的已发布条目由查询排除。
+export async function collectParseContext(env: ParseEnv): Promise<ParseJobContext> {
   const maxLlm = maxLlmPerRun(env);
 
   // 1) 暂存条目（published=0）+ 已发布补救类（spec11）
@@ -597,7 +621,7 @@ export async function runParse(env: ParseEnv): Promise<ParseOutcome> {
     }
   }
 
-  // 4) 圈题 + MAX_LLM_PER_RUN 限流（enrich 优先、保持 id 序；已发布补救类并入合并圈题）
+  // 4) 圈题 + MAX_LLM_PER_RUN 截断（enrich 优先、保持 id 序；已发布补救类并入合并圈题）
   const { enrichTargets, missingTargets } = selectParseTargets(
     stagedItems,
     owners,
@@ -606,16 +630,38 @@ export async function runParse(env: ParseEnv): Promise<ParseOutcome> {
     candidateHandledIds,
   );
   const itemById = new Map(items.map((i) => [i.id, i]));
-  type Capped = { kind: "enrich"; target: EnrichTarget } | { kind: "propose"; target: MissingTarget };
-  const capped: Capped[] = [
-    ...enrichTargets.map((t): Capped => ({ kind: "enrich", target: t })),
-    ...missingTargets.map((t): Capped => ({ kind: "propose", target: t })),
+  const capped: CappedJob[] = [
+    ...enrichTargets.map((t): CappedJob => ({ kind: "enrich", target: t })),
+    ...missingTargets.map((t): CappedJob => ({ kind: "propose", target: t })),
   ].slice(0, maxLlm);
   const totalTargets = enrichTargets.length + missingTargets.length;
 
   // 在册公司名清单（propose prompt 用）
   const companyNames = await env.DB.prepare("SELECT name FROM companies ORDER BY id").all<{ name: string }>();
   const registryNames = companyNames.results.map((r) => r.name);
+
+  return { items, itemById, publishedIds, capped, totalTargets, registryNames };
+}
+
+// 每条完成的进度更新（processed 仅计成功，与 ParseOutcome 口径一致）
+export interface ParseProgressUpdate {
+  processed: number;
+  remaining: number;
+  errors: string[];
+}
+export type ParseProgressCallback = (update: ParseProgressUpdate) => void;
+
+// 执行体（LLM 编排 + proposal/候选落库）：消费 collectParseContext 产出，每条完成即回调
+// onProgress（可选；作业路径借它增量写 parse_state）。返回口径与旧 runParse 完全一致：
+// D1 batch 写 item_proposals / company_candidates；**已发布条目的 proposal 立即应用**
+//（applyProposalStatements 直接生效 role，不等 publish——条目已入库，没有后续 publish 节点）。
+export async function executeParse(
+  env: ParseEnv,
+  context: ParseJobContext,
+  onProgress?: ParseProgressCallback,
+): Promise<ParseOutcome> {
+  const cfg = llmConfigFromEnv(env);
+  const maxLlm = maxLlmPerRun(env);
 
   // 5) 双 job：enrich 判 primary + deriveRoles → proposal 行；propose 三分类 → company 候选行。
   //    单条 LLM 失败兜底记录不中断整批（同 scripts/enrich.ts 范式）。
@@ -624,61 +670,77 @@ export async function runParse(env: ParseEnv): Promise<ParseOutcome> {
     | { ok: false; error: string };
   const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
-  const results = await runWithLimiter(
-    capped.map(
-      (c): (() => Promise<JobOutcome>) =>
-        c.kind === "enrich"
-          ? async () => {
-              const item = itemById.get(c.target.itemId);
-              if (item === undefined) return { ok: false, error: `${c.target.itemId}: 条目数据不一致` };
-              try {
-                const prompt = buildEnrichPrompt(item, c.target.candidates);
-                const raw = await chatJson(cfg, prompt.system, prompt.user);
-                const parsed = parseEnrichResponse(
-                  raw,
-                  c.target.candidates.map((x) => x.id),
-                );
-                if (parsed === null) {
-                  return { ok: false, error: `${c.target.itemId}: enrich 响应不合法（前 120 字符）：${raw.slice(0, 120)}` };
-                }
-                const verdicts = deriveRoles(item, c.target.candidates, parsed.primaryId, parsed.reason);
-                return {
-                  ok: true,
-                  proposal: {
-                    itemId: c.target.itemId,
-                    owners: verdicts.map((v) => ({ companyId: v.companyId, role: v.role })),
-                    llmModel: cfg.model,
-                  },
-                };
-              } catch (err) {
-                return { ok: false, error: `${c.target.itemId}: ${errorMessage(err)}` };
-              }
+  // 单条目标 → 作业函数（enrich / propose 两分支，原 runParse 闭包原样迁入）
+  const jobOf = (c: CappedJob): (() => Promise<JobOutcome>) =>
+    c.kind === "enrich"
+      ? async () => {
+          const item = context.itemById.get(c.target.itemId);
+          if (item === undefined) return { ok: false, error: `${c.target.itemId}: 条目数据不一致` };
+          try {
+            const prompt = buildEnrichPrompt(item, c.target.candidates);
+            const raw = await chatJson(cfg, prompt.system, prompt.user);
+            const parsed = parseEnrichResponse(
+              raw,
+              c.target.candidates.map((x) => x.id),
+            );
+            if (parsed === null) {
+              return { ok: false, error: `${c.target.itemId}: enrich 响应不合法（前 120 字符）：${raw.slice(0, 120)}` };
             }
-          : async () => {
-              try {
-                const prompt = buildProposePrompt(c.target, registryNames);
-                const raw = await chatJson(cfg, prompt.system, prompt.user);
-                const verdict = parseProposeResponse(raw, registryNames);
-                if (verdict === null) {
-                  return { ok: false, error: `${c.target.itemId}: propose 响应不合法（前 120 字符）：${raw.slice(0, 120)}` };
-                }
-                if (verdict.kind !== "company") return { ok: true }; // product/ignore 仅计数
-                const evidence = verdict.evidence.replace(/\s+/g, " ").trim();
-                return {
-                  ok: true,
-                  candidate: {
-                    id: verdict.id,
-                    name: verdict.name,
-                    aliases: verdict.aliases,
-                    confidence: confidenceOf(verdict.name, verdict.aliases, evidence),
-                    reason: evidence,
-                    sourceItemId: c.target.itemId,
-                  },
-                };
-              } catch (err) {
-                return { ok: false, error: `${c.target.itemId}: ${errorMessage(err)}` };
-              }
-            },
+            const verdicts = deriveRoles(item, c.target.candidates, parsed.primaryId, parsed.reason);
+            return {
+              ok: true,
+              proposal: {
+                itemId: c.target.itemId,
+                owners: verdicts.map((v) => ({ companyId: v.companyId, role: v.role })),
+                llmModel: cfg.model,
+              },
+            };
+          } catch (err) {
+            return { ok: false, error: `${c.target.itemId}: ${errorMessage(err)}` };
+          }
+        }
+      : async () => {
+          try {
+            const prompt = buildProposePrompt(c.target, context.registryNames);
+            const raw = await chatJson(cfg, prompt.system, prompt.user);
+            const verdict = parseProposeResponse(raw, context.registryNames);
+            if (verdict === null) {
+              return { ok: false, error: `${c.target.itemId}: propose 响应不合法（前 120 字符）：${raw.slice(0, 120)}` };
+            }
+            if (verdict.kind !== "company") return { ok: true }; // product/ignore 仅计数
+            const evidence = verdict.evidence.replace(/\s+/g, " ").trim();
+            return {
+              ok: true,
+              candidate: {
+                id: verdict.id,
+                name: verdict.name,
+                aliases: verdict.aliases,
+                confidence: confidenceOf(verdict.name, verdict.aliases, evidence),
+                reason: evidence,
+                sourceItemId: c.target.itemId,
+              },
+            };
+          } catch (err) {
+            return { ok: false, error: `${c.target.itemId}: ${errorMessage(err)}` };
+          }
+        };
+
+  // 逐条完成记账：processed 仅计成功、errors 收失败清单；每条完成即回调 onProgress（spec13）
+  let processed = 0;
+  const errors: string[] = [];
+  const results = await runWithLimiter(
+    context.capped.map(
+      (c) => async (): Promise<JobOutcome> => {
+        const r = await jobOf(c)();
+        if (r.ok) processed += 1;
+        else errors.push(r.error);
+        onProgress?.({
+          processed,
+          remaining: context.totalTargets - processed,
+          errors: errors.slice(0, ERRORS_MAX),
+        });
+        return r;
+      },
     ),
     maxLlm,
   );
@@ -696,7 +758,7 @@ export async function runParse(env: ParseEnv): Promise<ParseOutcome> {
     (s) => s !== "",
   );
   for (const p of proposalRows) {
-    if (!publishedIds.has(p.itemId)) continue; // 暂存类：等 publish 应用（spec10 语义）
+    if (!context.publishedIds.has(p.itemId)) continue; // 暂存类：等 publish 应用（spec10 语义）
     statements.push(
       ...applyProposalStatements(
         p.itemId,
@@ -709,15 +771,120 @@ export async function runParse(env: ParseEnv): Promise<ParseOutcome> {
     await env.DB.batch(statements.map((s) => env.DB.prepare(s)));
   }
 
-  const processed = results.filter((r) => r.ok).length;
   const skipped = results.length - processed;
   return {
     processed,
     candidatesFound: deduped.size,
-    remaining: totalTargets - processed,
+    remaining: context.totalTargets - processed,
     skipped,
     errors: results.flatMap((r) => (r.ok ? [] : [r.error])).slice(0, ERRORS_MAX),
   };
+}
+
+// 兼容入口（签名向后兼容：onProgress 为可选新增参数）——启动阶段 + 执行体一体。
+// POST /api/parse 作业路径不走这里（startParse 拆两段以支持 ctx.waitUntil 异步续跑）。
+export async function runParse(env: ParseEnv, onProgress?: ParseProgressCallback): Promise<ParseOutcome> {
+  return executeParse(env, await collectParseContext(env), onProgress);
+}
+
+// ---------- parse_state 读写与作业编排（spec13 契约 A/B，薄 IO） ----------
+
+// 读 parse_state 单行（迁移 seed 后恒存在；无行 → idle 等价行归一兜底）
+export async function readParseState(env: ParseEnv): Promise<ParseStateRow> {
+  const row = await env.DB.prepare(
+    "SELECT id, status, started_at AS startedAt, finished_at AS finishedAt, processed, total, remaining, errors FROM parse_state WHERE id = 1",
+  ).first<ParseStateRow>();
+  return row ?? emptyParseState();
+}
+
+// 写 parse_state 单行（upsert 全列；单语句 prepare 执行，SQL 由 parseStateUpsertSql 纪律生成）
+export async function writeParseState(env: ParseEnv, state: ParseStateWrite): Promise<void> {
+  await env.DB.prepare(parseStateUpsertSql(state)).run();
+}
+
+export interface StartParseResult {
+  started: boolean; // false = parse_busy：已有 running 作业（routes 转 409），未启动新一轮
+  state: ParseStatePayload;
+}
+
+// POST /api/parse 异步作业入口（spec13 契约 B）：busy 守卫 → 启动阶段圈题计数 → 置 running →
+// 立即返回 → 执行体经 ctx.waitUntil 续跑（无 ctx 回退 await 同步执行）。
+export async function startParse(env: ParseEnv, ctx?: ExecutionContext): Promise<StartParseResult> {
+  const prev = await readParseState(env);
+  const now = new Date();
+  if (parseBusy(prev, now)) {
+    return { started: false, state: assembleParseState(prev) };
+  }
+  // 圈题查询提前到启动阶段：total=本轮圈题数（未按 MAX_LLM_PER_RUN 截断，与 remaining 口径一致）
+  const context = await collectParseContext(env);
+  const startedAt = now.toISOString();
+  const total = context.totalTargets;
+  await writeParseState(env, {
+    status: "running",
+    startedAt,
+    finishedAt: null,
+    processed: 0,
+    total,
+    remaining: total,
+    errors: [],
+  });
+  const execution = runParseJob(env, context, startedAt);
+  if (ctx === undefined) {
+    await execution; // 无 ctx 回退同步执行（兼容既有调用场景）
+  } else {
+    ctx.waitUntil(execution); // 响应先行，解析在后台续跑
+  }
+  return {
+    started: true,
+    state: { status: "running", startedAt, finishedAt: null, processed: 0, total, remaining: total, errors: [] },
+  };
+}
+
+// 作业执行体包装：借 onProgress 增量写 parse_state（processed/remaining/errors 每条完成即 UPDATE），
+// 正常结束置 done（errors 保留），整体异常置 failed。parse_state 写经 promise 链串行——
+// 并发 LLM 完成回调的写库按完成序落库，防迟到的旧进度写覆盖新值/终态。
+async function runParseJob(env: ParseEnv, context: ParseJobContext, startedAt: string): Promise<void> {
+  const total = context.totalTargets;
+  const progress: ParseProgressUpdate = { processed: 0, remaining: total, errors: [] };
+  let chain: Promise<void> = Promise.resolve();
+  const enqueue = (state: ParseStateWrite): void => {
+    chain = chain
+      .then(() => writeParseState(env, state))
+      .catch(() => {}); // 单次进度写失败不阻塞解析推进（终态写库兜底纠正计数）
+  };
+  try {
+    const outcome = await executeParse(env, context, (update) => {
+      Object.assign(progress, update);
+      enqueue({ status: "running", startedAt, finishedAt: null, total, ...progress });
+    });
+    // 终态也入链：保证落在最后一条进度写之后（防 done 被迟到的 running 写覆盖）
+    chain = chain.then(() =>
+      writeParseState(env, {
+        status: "done",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        total,
+        processed: outcome.processed,
+        remaining: outcome.remaining,
+        errors: outcome.errors,
+      }),
+    );
+    await chain;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    chain = chain.then(() =>
+      writeParseState(env, {
+        status: "failed",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        total,
+        processed: progress.processed,
+        remaining: progress.remaining,
+        errors: [message],
+      }),
+    );
+    await chain;
+  }
 }
 
 // ---------- 薄 IO：GET /api/review/pending ----------
@@ -754,7 +921,10 @@ export async function reviewPending(env: ParseEnv): Promise<PendingPayload> {
       "FROM company_candidates WHERE status = 'pending' ORDER BY id",
   ).all<PendingCandidateRow>();
 
-  return assemblePending(itemRows.results, ownerRows, proposalRows, candidateRows.results);
+  const payload = assemblePending(itemRows.results, ownerRows, proposalRows, candidateRows.results);
+  // spec13 契约 C：载荷扩展 parse 字段（parse_state 单行 SELECT → 组装载荷；idle 归一）
+  const stateRow = await readParseState(env);
+  return { ...payload, parse: assembleParseState(stateRow) };
 }
 
 // ---------- 薄 IO：PATCH /api/review/item ----------

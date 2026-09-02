@@ -11,6 +11,15 @@
 --       npx wrangler d1 execute juya-daily --local --command "PRAGMA table_info(sources);"
 --       npx wrangler d1 execute juya-daily --local --command "SELECT (SELECT COUNT(*) FROM items) AS items, (SELECT COUNT(*) FROM sources) AS sources, (SELECT COUNT(*) FROM companies) AS companies;"
 --       （计数应与迁移前一致：items=1116 / sources=73 / companies=39）
+--       npx wrangler d1 execute juya-daily --local --command "SELECT * FROM parse_state;"
+--       （spec13 契约 A：应返回 idle 单行 id=1）
+--
+-- 原子性实测（wrangler 4.127）：d1 execute --file 整体是一个事务——任一语句报错则【全文件回滚】，
+-- 并非「报错语句之外的语句继续生效」。因此：
+--   - 全新库（含部署日生产 D1）：ALTER 成功，本文件一次执行全部生效（含 parse_state）。
+--   - 已迁移过的库（ALTER 报错 duplicate column name）：整个文件回滚，文件内新增量表不会落库；
+--     需以 --command 幂等引导（与文件内 parse_state 两语句逐字相同，可重复执行）：
+--       npx wrangler d1 execute juya-daily --local --command "CREATE TABLE IF NOT EXISTS parse_state (id INTEGER PRIMARY KEY CHECK (id = 1), status TEXT NOT NULL DEFAULT 'idle' CHECK (status IN ('idle','running','done','failed')), started_at TEXT, finished_at TEXT, processed INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0, remaining INTEGER NOT NULL DEFAULT 0, errors TEXT NOT NULL DEFAULT '[]'); INSERT INTO parse_state (id) VALUES (1) ON CONFLICT(id) DO NOTHING;"
 
 ALTER TABLE items ADD COLUMN published INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE sources ADD COLUMN published INTEGER NOT NULL DEFAULT 1;
@@ -37,3 +46,20 @@ CREATE TABLE IF NOT EXISTS company_candidates (
 );
 
 CREATE INDEX IF NOT EXISTS idx_company_candidates_status ON company_candidates(status);
+
+-- ─── parse_state（spec13 契约 A：解析异步作业单行状态，同一时刻至多一轮解析）────────
+-- 启动守卫（spec13 契约 B）：status='running' 且 started_at 距今 <10 分钟 → 409 parse_busy；
+-- 超时陈旧（worker 中断遗留）允许覆盖重跑。errors 为 JSON 字符串数组字面量（默认空数组）。
+CREATE TABLE IF NOT EXISTS parse_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  status TEXT NOT NULL DEFAULT 'idle' CHECK (status IN ('idle','running','done','failed')),
+  started_at TEXT,
+  finished_at TEXT,
+  processed INTEGER NOT NULL DEFAULT 0,
+  total INTEGER NOT NULL DEFAULT 0,
+  remaining INTEGER NOT NULL DEFAULT 0,
+  errors TEXT NOT NULL DEFAULT '[]'
+);
+
+-- seed idle 单行：幂等（ON CONFLICT(id) DO NOTHING，重复迁移不覆盖作业真实状态）
+INSERT INTO parse_state (id) VALUES (1) ON CONFLICT(id) DO NOTHING;

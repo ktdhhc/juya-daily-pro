@@ -152,17 +152,19 @@ interface Props {
   onPatch: (itemId: string, owners: PatchOwnersBody[]) => Promise<unknown>;
 }
 
-// 三态分组节（spec12 契约 B）：空组不渲染；待解析标题朱橙（收件箱「需处理」语义）
+// 四态分组节（spec12 契约 B + 走查补正）：空组不渲染；待解析/缺候选待入册标题朱橙（收件箱「需处理」语义）
 const SECTIONS: { key: keyof CategorizedPending; label: string }[] = [
   { key: "unparsed", label: "待解析" },
+  { key: "blocked", label: "缺候选待入册" },
   { key: "parsed", label: "已解析待确认" },
   { key: "noNeed", label: "无需解析" },
 ];
 
-/** 三态分组条目区（spec12 票 02）：每组标题带计数，组内按日期小节排列，条目行沿用 ReviewItem。 */
+/** 三态分组条目区（spec12 票 02）：每组标题带计数，组内按日期小节排列，条目行沿用 ReviewItem。
+ *  根节点挂 id="review-staged"（数据流标头①段滚动锚点，spec13 契约 E）。 */
 export function StagedIssueList({ groups, companies, onPatch }: Props) {
   return (
-    <div className="fade-up">
+    <div className="fade-up" id="review-staged">
       {SECTIONS.map(({ key, label }, idx) => {
         const items = groups[key];
         if (items.length === 0) return null;
@@ -179,7 +181,10 @@ export function StagedIssueList({ groups, companies, onPatch }: Props) {
             <div className="day-head">
               <span
                 className="text-sm font-semibold"
-                style={{ color: key === "unparsed" ? "var(--accent)" : "var(--fg)" }}
+                style={{
+                  color:
+                    key === "unparsed" || key === "blocked" ? "var(--accent)" : "var(--fg)",
+                }}
               >
                 {label}
               </span>

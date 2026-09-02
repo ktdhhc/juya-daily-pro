@@ -25,7 +25,7 @@ import {
   reviewPatch,
   reviewPending,
   reviewPublish,
-  runParse,
+  startParse,
 } from "./parse";
 import {
   DEFAULT_PAGE_LIMIT,
@@ -127,7 +127,9 @@ async function withCache(request: Request, handler: () => Promise<Response>): Pr
 
 // ---------- 路由分发 ----------
 
-export async function handleApiRequest(request: Request, env: Env): Promise<Response> {
+// ctx（spec13 契约 B）：可选第三参透传——POST /api/parse 借 ctx.waitUntil 让解析作业在响应后
+// 续跑；无 ctx 的调用场景回退同步执行（兼容既有调用）。
+export async function handleApiRequest(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   try {
     const url = new URL(request.url);
     let pathname = url.pathname;
@@ -142,8 +144,25 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     if (pathname === "/api/admin/ping") return await adminPingRoute(request, env);
     // 解析与审核四端点（spec10 Step 2.3，全部 requireAdmin；GET pending 走 methodGuard 语义但
     // 不进 withCache——审核数据必须实时，四端点均不写缓存）
+    // POST /api/parse（spec13 契约 B）：异步作业——启动守卫（running<10min → 409 parse_busy）、
+    // 置 running 后秒回 { started: true, state }，解析本体经 ctx.waitUntil 续跑；ctx 缺省同步执行
     if (pathname === "/api/parse") {
-      return await adminMethodRoute(request, env, "POST", async () => jsonOk(await runParse(env)));
+      return await adminMethodRoute(request, env, "POST", async () => {
+        const result = await startParse(env, ctx);
+        if (!result.started) {
+          return new Response(
+            JSON.stringify({
+              error: {
+                code: "parse_busy",
+                message: "解析作业进行中，请等待本轮完成（运行超 10 分钟视为陈旧，可重试启动）",
+              },
+              state: result.state,
+            }),
+            { status: 409, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return jsonOk({ started: true, state: result.state });
+      });
     }
     if (pathname === "/api/review/pending") {
       return await adminMethodRoute(request, env, "GET", async () => jsonOk(await reviewPending(env)));

@@ -73,6 +73,7 @@ export function PublishBar({ groups, onPublish }: Props) {
 
   return (
     <div
+      id="review-publish"
       className="fixed inset-x-0 bottom-0 z-40"
       style={{
         background: "color-mix(in srgb, var(--bg) 90%, transparent)",
