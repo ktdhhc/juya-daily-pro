@@ -153,8 +153,24 @@ export interface SyncResponse {
   stagedDates: string[];
   /** 同步后 published=0 条目总数（spec12 契约 A：Header 同步条「M 条待审核」） */
   stagedItems: number;
+  /** 消息诚实化三分类：窗口内不在库（新增）/ 在库且内容有变（更新）/ 在库且内容相同（未变化） */
+  added: string[];
+  updated: string[];
+  unchanged: string[];
   /** 失败期：{ date, error }，单期容错不阻塞后续期 */
   failures: { date: string; error: string }[];
+}
+
+/** 同步成功条文案（消息诚实化）：新增/更新/核对三分类 + 待审核条数 + 失败期，
+ *  取代无信息量的「同步 N 期」——N 只是窗口大小，与是否新内容无关 */
+export function syncToastMessage(res: SyncResponse): string {
+  const parts: string[] = [];
+  if (res.added.length > 0) parts.push(`新增 ${res.added.length} 期`);
+  if (res.updated.length > 0) parts.push(`更新 ${res.updated.length} 期`);
+  if (res.unchanged.length > 0) parts.push(`核对 ${res.unchanged.length} 期未变化`);
+  if (res.stagedItems > 0) parts.push(`${res.stagedItems} 条待审核`);
+  if (res.failures.length > 0) parts.push(`失败 ${res.failures.length} 期`);
+  return `同步完成${parts.length > 0 ? ` · ${parts.join(" · ")}` : ""}`;
 }
 
 /** POST /api/sync：增量同步（spec06 B4）。ADMIN_TOKEN 守卫生效时 403 = unauthorized（需要管理口令） */

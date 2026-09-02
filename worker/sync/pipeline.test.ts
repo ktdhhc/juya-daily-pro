@@ -61,3 +61,43 @@ describe("selectSyncDates", () => {
     expect(dates).toEqual(["2026-08-28"]);
   });
 });
+
+// ---------- classifyWindow（spec12 后续：同步消息诚实化） ----------
+
+import { classifyWindow } from "./pipeline";
+
+describe("classifyWindow（同步窗口三分类：新增/有更新/未变化）", () => {
+  const fetched = [
+    { date: "2026-09-01", markdown: "新版内容" },
+    { date: "2026-08-31", markdown: "修订后内容" },
+    { date: "2026-08-30", markdown: "一模一样" },
+  ];
+
+  it("三类各归其位：不在库=新增，在库且内容不同=有更新，在库且内容相同=未变化", () => {
+    const existing = new Map([
+      ["2026-08-31", "原始内容"],
+      ["2026-08-30", "一模一样"],
+    ]);
+    expect(classifyWindow(fetched, existing)).toEqual({
+      added: ["2026-09-01"],
+      updated: ["2026-08-31"],
+      unchanged: ["2026-08-30"],
+    });
+  });
+
+  it("空库全为新增；日期序保持与抓取序一致（升序）", () => {
+    expect(classifyWindow(fetched, new Map())).toEqual({
+      added: ["2026-09-01", "2026-08-31", "2026-08-30"],
+      updated: [],
+      unchanged: [],
+    });
+  });
+
+  it("抓取失败期（不在 fetched 列表）不参与分类", () => {
+    expect(classifyWindow([{ date: "2026-08-30", markdown: "一模一样" }], new Map([["2026-08-30", "一模一样"]]))).toEqual({
+      added: [],
+      updated: [],
+      unchanged: ["2026-08-30"],
+    });
+  });
+});

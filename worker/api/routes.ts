@@ -9,7 +9,7 @@ import type { Company, Item } from "../../src/lib/schema";
 import { parseArchiveDates } from "../sync/archive";
 import { matchAll } from "../sync/match";
 import { parseIssue } from "../sync/parse";
-import { selectSyncDates } from "../sync/pipeline";
+import { classifyWindow, selectSyncDates } from "../sync/pipeline";
 import {
   companiesPruneSql,
   enrichStateUpdateSql,
@@ -639,6 +639,23 @@ async function syncNow(env: Env): Promise<Response> {
     const failures: { date: string; error: string }[] = [];
     const statements: string[] = [];
     const outcomes = await mapPool(dates, SYNC_CONCURRENCY, (d) => fetchOneIssue(d, mdBase));
+    // 消息诚实化：抓取完成后、写库前，取窗口期在库现存的 markdown 做三分类（新增/有更新/未变化）。
+    // 只影响响应口径与提示语；写库行为不变（每期照常重匹配，注册新公司后点同步仍能补归属）。
+    const okOutcomes = outcomes.filter((o) => o.ok);
+    const existingMarkdown = new Map<string, string>();
+    if (okOutcomes.length > 0) {
+      const placeholders = okOutcomes.map(() => "?").join(", ");
+      const existingRows = await env.DB.prepare(
+        `SELECT date, markdown FROM sources WHERE date IN (${placeholders})`,
+      )
+        .bind(...okOutcomes.map((o) => o.parsedDate))
+        .all<{ date: string; markdown: string }>();
+      for (const r of existingRows.results) existingMarkdown.set(r.date, r.markdown);
+    }
+    const { added, updated, unchanged } = classifyWindow(
+      okOutcomes.map((o) => ({ date: o.parsedDate, markdown: o.markdown })),
+      existingMarkdown,
+    );
     for (const o of outcomes) {
       if (!o.ok) {
         failures.push({ date: o.date, error: o.error });
@@ -668,13 +685,23 @@ async function syncNow(env: Env): Promise<Response> {
     // stagedDates = 同步执行后 items.published=0 的期（真有暂存的权威口径，spec11 契约 A——
     // 重同步已发布期时不再误报「待审核」）；stagedItems = published=0 条目总数（spec12 契约 A，
     // 与 stagedDates 同源：一条 GROUP BY 同时取 DISTINCT date 与逐期计数，总数 = 逐期 cnt 求和）；
+    // added/updated/unchanged = 窗口三分类（消息诚实化：不在库/内容有变/内容相同）；
     // failures = 失败期与错误消息（与 dates 划分整个窗口）
     const stagedRows = await env.DB.prepare(
       "SELECT date, COUNT(*) AS cnt FROM items WHERE published = 0 GROUP BY date ORDER BY date ASC",
     ).all<{ date: string; cnt: number }>();
     const stagedDates = stagedRows.results.map((r) => r.date);
     const stagedItems = stagedRows.results.reduce((acc, r) => acc + Number(r.cnt), 0);
-    return jsonOk({ ok: failures.length === 0, dates: synced, stagedDates, stagedItems, failures });
+    return jsonOk({
+      ok: failures.length === 0,
+      dates: synced,
+      stagedDates,
+      stagedItems,
+      added,
+      updated,
+      unchanged,
+      failures,
+    });
   } catch (err) {
     if (err instanceof HttpError) throw err;
     throw new HttpError(500, "sync_failed", err instanceof Error ? err.message : String(err));

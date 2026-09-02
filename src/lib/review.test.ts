@@ -209,3 +209,43 @@ describe("parsePollStopRefresh（spec13 契约 D/F：何时停 + 是否补拉数
     expect(parsePollStopRefresh("running", null)).toBe(false);
   });
 });
+
+// ═══════════ 同步提示语诚实化（消息 = 新增/更新/核对 三分类，零信息缺失）═══════════
+
+import { syncToastMessage } from "./api";
+
+describe("syncToastMessage（同步成功条文案）", () => {
+  const base = { ok: true, dates: [], stagedDates: [], stagedItems: 0, failures: [] as { date: string; error: string }[] };
+
+  it("全未变化：「核对 4 期未变化」（不再出现无信息的「同步 4 期」）", () => {
+    expect(
+      syncToastMessage({ ...base, dates: ["2026-09-01"], added: [], updated: [], unchanged: ["2026-09-01", "2026-08-31", "2026-08-30", "2026-08-29"] })
+    ).toBe("同步完成 · 核对 4 期未变化");
+  });
+
+  it("有新增：新增期数 + 待审核条数；失败期附尾", () => {
+    expect(
+      syncToastMessage({
+        ...base,
+        dates: ["2026-09-02"],
+        added: ["2026-09-02"],
+        updated: [],
+        unchanged: ["2026-09-01", "2026-08-31", "2026-08-30"],
+        stagedItems: 16,
+        failures: [{ date: "2026-08-29", error: "HTTP 404" }],
+      })
+    ).toBe("同步完成 · 新增 1 期 · 核对 3 期未变化 · 16 条待审核 · 失败 1 期");
+  });
+
+  it("有更新：更新期数参与；stagedItems=0 省略待审核段", () => {
+    expect(
+      syncToastMessage({
+        ...base,
+        dates: ["2026-09-01"],
+        added: [],
+        updated: ["2026-09-01"],
+        unchanged: ["2026-08-31", "2026-08-30"],
+      })
+    ).toBe("同步完成 · 更新 1 期 · 核对 2 期未变化");
+  });
+});

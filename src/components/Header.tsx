@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 import { AdminGate } from "./common/AdminGate";
 import { HighlightText } from "./common/HighlightText";
-import { ApiError, fetchPendingReview, fetchSuggest, triggerSync, type SuggestItem } from "@/lib/api";
+import { ApiError, fetchPendingReview, fetchSuggest, syncToastMessage, triggerSync, type SuggestItem } from "@/lib/api";
 import { clearAdminToken, isAdmin } from "@/lib/auth";
 
 export type HeaderActive = "daily" | "stream" | "company" | "review" | "dashboard";
@@ -140,12 +140,8 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
     try {
       const res = await triggerSync();
       if (res.ok) {
-        // spec12 契约 A：stagedItems=同步后 published=0 条目总数；M=0 时省略后半
-        setSyncMsg(
-          `同步 ${res.dates.length} 期` +
-            `${res.stagedItems > 0 ? ` · ${res.stagedItems} 条待审核` : ""}` +
-            `${res.failures.length > 0 ? ` · 失败 ${res.failures.length}` : ""}`
-        );
+        // 消息诚实化：新增/更新/核对三分类 + 待审核条数 + 失败期（syncToastMessage 纯函数，review.test 覆盖）
+        setSyncMsg(syncToastMessage(res));
         setSyncPhase("ok");
       } else {
         const f = res.failures[0];

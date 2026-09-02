@@ -18,3 +18,20 @@ export function selectSyncDates(
   const floor = new Date(Date.UTC(y, m - 1, d) - lookbackDays * dayMs).toISOString().slice(0, 10);
   return archiveDates.filter((date) => date >= floor).sort();
 }
+
+// classifyWindow — 同步窗口三分类（消息诚实化）：逐期比对抓取内容与库内现存的 markdown，
+// 分为 新增（不在库）/ 有更新（在库且内容不同）/ 未变化（在库且内容相同）。
+// 只影响响应口径与提示语；写库行为不变（每期照常重匹配，注册新公司后点同步仍能补归属）。
+export function classifyWindow(
+  fetched: { date: string; markdown: string }[],
+  existing: ReadonlyMap<string, string>,
+): { added: string[]; updated: string[]; unchanged: string[] } {
+  const out = { added: [] as string[], updated: [] as string[], unchanged: [] as string[] };
+  for (const { date, markdown } of fetched) {
+    const stored = existing.get(date);
+    if (stored === undefined) out.added.push(date);
+    else if (stored === markdown) out.unchanged.push(date);
+    else out.updated.push(date);
+  }
+  return out;
+}
