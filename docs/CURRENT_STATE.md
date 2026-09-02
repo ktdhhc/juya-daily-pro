@@ -14,7 +14,7 @@
 
 ## 当前阶段
 
-**阶段 0-5（v1 本地 MVP）+ spec06-12 全部完成（2026-09-01）**：read API + `POST /api/sync`（暂存写入、stagedDates/stagedItems 权威口径）+ 角色权限基座（口令制访客/管理员）+ 编辑工作流（同步-解析-入库三段，/review 收件台：三态状态条、解析结果常驻与再跑一次、条目三态分组、入库预览、同步历史与解析后日报回看、已发布缺主次条目可重解析）+ LLM 数据整理（323+2 条多家命中 role 全量回填）+ 数据面板（/dashboard 五段自绘图表、热力图深浅只按当日条数）+ 阅读时间线（/ 左侧刻度轨）+ 搜索联想（/api/search/suggest）与结果页 `<mark>` 高亮。vitest 309 测试 + 双 typecheck + lint 门禁全绿，静态导出 46 页。**下一站部署日（阶段 6，需用户在场）**：Cloudflare 登录 → 替换 `database_id` → 生产 D1 迁移 + backfill → `wrangler deploy` + ADMIN_TOKEN/LLM_API_KEY secret → Pages + /api 同域代理 → 启用 cron（只写暂存不自动发布）。部署清单详见 `handoffs/260829-1242.md` 与 CURRENT_STATE 本文件。
+**阶段 0-5（v1 本地 MVP）+ spec06-13 全部完成（2026-09-02）**：read API + `POST /api/sync`（暂存写入、stagedDates/stagedItems 权威口径）+ 角色权限基座（口令制访客/管理员）+ 编辑工作流（同步-解析-入库三段，/review 收件台：数据流标头、**解析异步作业化——parse_state 落 D1、秒回+轮询+刷新恢复+409 双启动守卫+10min 陈旧自愈**、四态分组（待解析/缺候选待入册/已解析待确认/无需解析）、解析结果常驻、入库预览、同步历史与解析后日报回看、已发布缺主次条目可重解析）+ LLM 数据整理（325 条多家命中 role 回填）+ 数据面板（/dashboard 五段自绘图表）+ 阅读时间线 + 搜索联想与高亮。vitest 335 测试 + 双 typecheck + lint 门禁全绿，静态导出 46 页。**下一站部署日（阶段 6，需用户在场）**：Cloudflare 登录 → 替换 `database_id` → 生产 D1 迁移（schema + migrate-staging，注意 --file 原子事务语义见文件头注释）+ backfill → `wrangler deploy` + ADMIN_TOKEN/LLM_API_KEY secret → Pages + /api 同域代理 → 启用 cron（只写暂存不自动发布）。部署清单详见 `handoffs/260829-1242.md`。
 
 ## 范围边界
 
@@ -55,7 +55,7 @@
 - `/` 阅读页：直连 daily.juya.uk（部署日迁移），galley 骨架 + 合订本日历。
 - `/stream`：facet 栏 + 按天分组条目流；钤印主次语言——主导 20px 实印 / 参与 18px / 提及 16px 描边，tooltip 带角色词（§4.2）。
 - `/company`、`/company/[id]`：印章卡片墙 + 档案头五块（不变）。
-- `/review` 收件台（§4.12）：三态状态条（待解析/已解析待确认/无需解析，categorizePending 分组）→ 解析区（结果 localStorage 常驻、逐条错误、再跑一次）→ 三态分组条目区（现状 vs 建议、missing_owner 行内候选待入册提示）→ 候选公司区（CandidatePanel）→ PublishBar 入库预览（期数/条数/建议生效数）→ 同步历史折叠区（/api/review/history：成败/时间/条数/入库状态/展开条目行式清单/查看日报）；管理员直访，访客 AdminGate 解锁。
+- `/review` 收件台（§4.12）：数据流标头（三段流水线：暂存 N 条→解析状态→已入库 X 期 Y 条，点击滚跳）→ 状态条四态（待解析/缺候选待入册/已解析待确认/无需解析，categorizePending）→ 解析区（**异步作业**：POST 秒回+轮询 3s、刷新恢复、409 双启动守卫、结果 localStorage 终态缓存）→ 四态分组条目区 → 候选公司区 → PublishBar 入库预览（fixed 视口底栏）→ 同步历史折叠区；管理员直访，访客 AdminGate 解锁。
 - `/dashboard`：总览五块 + TrendLine（点跳 /?date=）+ RankBars（分类/公司 Top12 墨条跳转）+ EnrichDonut（环形三段）+ SyncHeatmap（12 周 84 格全渲染，深浅只按当日条数 4 档）——全自绘，零图表库（§4.8）。
 - 阅读页时间线（§4.10）：左侧刻度轨（TimelineRail，lg+），hover 显标题、点击落位、scrollspy 高亮当前条目。
 - 搜索（§4.11）：报头输入即联想下拉（/api/search/suggest，命中高亮，↑↓/Enter）；/stream 结果页 title/summary `<mark>` 高亮（facets.query 由 loadFirst 回写）。
