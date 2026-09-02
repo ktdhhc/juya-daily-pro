@@ -608,9 +608,26 @@ async function syncNow(env: Env): Promise<Response> {
   try {
     const { archiveUrl, mdBase, lookbackDays } = syncVars(env);
 
-    // 1) 窗口：max(items.date)（经 binding）→ archive 期列表 → selectSyncDates（pipeline 纯函数）
+    // 1) 窗口：max(items.date)（经 binding）→ archive 期列表 → selectSyncDates（pipeline 纯函数）。
+    // archive 抓取是单点（无逐期容错可比），超时/网络抖动重试 1 次（同 fetchOneIssue 节奏）——
+    // 20260903 实测源站抖动时 archive 30s 超时直接 500，两次均失败才向上抛。
+    let archiveText = "";
+    let archiveError = "";
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        archiveText = await fetchText(archiveUrl);
+        archiveError = "";
+        break;
+      } catch (err) {
+        archiveError = err instanceof Error ? err.message : String(err);
+        if (attempt === 1) await sleep(800);
+      }
+    }
+    if (archiveText === "") {
+      throw new HttpError(500, "sync_failed", `归档页抓取失败（已重试）：${archiveError}`);
+    }
     const maxRow = await env.DB.prepare("SELECT MAX(date) AS m FROM items").first<{ m: string | null }>();
-    const archiveDates = parseArchiveDates(await fetchText(archiveUrl));
+    const archiveDates = parseArchiveDates(archiveText);
     if (archiveDates.length === 0) {
       throw new HttpError(500, "sync_failed", "archive 页未解析到任何期日期");
     }
