@@ -669,9 +669,15 @@ async function syncNow(env: Env): Promise<Response> {
         .all<{ date: string; markdown: string }>();
       for (const r of existingRows.results) existingMarkdown.set(r.date, r.markdown);
     }
+    // 暂存期集合（写库前取，二轮补正：在库但 published=0 的期归入「新增」而非「未变化」）
+    const stagedBeforeRows = await env.DB.prepare(
+      "SELECT DISTINCT date FROM items WHERE published = 0",
+    ).all<{ date: string }>();
+    const stagedBefore = new Set(stagedBeforeRows.results.map((r) => r.date));
     const { added, updated, unchanged } = classifyWindow(
       okOutcomes.map((o) => ({ date: o.parsedDate, markdown: o.markdown })),
       existingMarkdown,
+      stagedBefore,
     );
     for (const o of outcomes) {
       if (!o.ok) {

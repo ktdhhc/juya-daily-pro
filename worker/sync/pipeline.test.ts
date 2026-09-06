@@ -101,3 +101,45 @@ describe("classifyWindow（同步窗口三分类：新增/有更新/未变化）
     });
   });
 });
+
+// ---------- classifyWindow 补正（消息诚实化二轮：暂存期不算「未变化」） ----------
+
+describe("classifyWindow 暂存期归入新内容（staged 集合注入）", () => {
+  it("在库但处于暂存态（published=0）→ added（待审核的新内容，不算核对通过）", () => {
+    const fetched = [
+      { date: "2026-09-06", markdown: "内容相同" },
+      { date: "2026-09-05", markdown: "内容相同" },
+      { date: "2026-09-04", markdown: "内容相同" },
+    ];
+    const existing = new Map([
+      ["2026-09-06", "内容相同"],
+      ["2026-09-05", "内容相同"],
+      ["2026-09-04", "内容相同"],
+    ]);
+    const staged = new Set(["2026-09-06", "2026-09-05", "2026-09-04"]);
+    expect(classifyWindow(fetched, existing, staged)).toEqual({
+      added: ["2026-09-06", "2026-09-05", "2026-09-04"],
+      updated: [],
+      unchanged: [],
+    });
+  });
+
+  it("已入库期内容相同 → unchanged 不变", () => {
+    const fetched = [{ date: "2026-09-02", markdown: "同" }];
+    const existing = new Map([["2026-09-02", "同"]]);
+    expect(classifyWindow(fetched, existing, new Set(["2026-09-03"]))).toEqual({
+      added: [],
+      updated: [],
+      unchanged: ["2026-09-02"],
+    });
+  });
+
+  it("staged 参数缺省 → 旧行为兼容（在库即 unchanged）", () => {
+    const fetched = [{ date: "2026-09-02", markdown: "同" }];
+    expect(classifyWindow(fetched, new Map([["2026-09-02", "同"]]))).toEqual({
+      added: [],
+      updated: [],
+      unchanged: ["2026-09-02"],
+    });
+  });
+});
