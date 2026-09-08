@@ -14,7 +14,7 @@
 
 ## 当前阶段
 
-**✅ 已上线（2026-09-09 部署完成）**：生产 Worker `https://juya-daily-sync.ktdhhc9527.workers.dev`（D1 `juya-daily` id `311f10ee-f6f0-4dc1-b10d-44e8a3ce7ee7`，cron 北京 08:00-10:30 每半点自动同步+解析、不自动入库）；前端 Pages `https://juya-daily.pages.dev`（`functions/` 同域代理 `/api/*`，项目变量 `WORKER_ORIGIN` 已配）；生产数据 83 期 / 1248 条 / 39 家 / 归属率 89.3%，归属主次已回填（`npm run enrich -- --remote`：primary=359 / partner=99 / subject=455，失败 8 条为超时/写库抖动，可重跑）；`ADMIN_TOKEN` 与 `LLM_API_KEY` 经 `wrangler deploy --secrets-file .prod.secrets` 注入（无口令访问受守卫端点 403 已实测）。**剩余可选项**：①首页迁移 read API（ADR-0013 允许延后，现仍直连 daily.juya.uk）②自定义域名（可选）。日常运维：本地改代码 → `wrangler deploy --secrets-file .prod.secrets`；前端改动 → `npm run build` + `wrangler pages deploy out --project-name juya-daily`。
+**✅ 已上线（2026-09-09 部署完成）**：生产 Worker `https://juya-daily-sync.ktdhhc9527.workers.dev`（D1 `juya-daily` id `311f10ee-f6f0-4dc1-b10d-44e8a3ce7ee7`，cron 北京 08:00-10:30 每半点自动同步+解析、不自动入库）；前端 Pages `https://juya-daily.pages.dev`（`functions/` 同域代理 `/api/*`，项目变量 `WORKER_ORIGIN` 已配）；生产数据 83 期 / 1248 条 / 39 家 / 归属率 89.3%，归属主次已回填（`npm run enrich -- --remote`：primary=359 / partner=99 / subject=455，失败 8 条为超时/写库抖动，可重跑）；`ADMIN_TOKEN` 与 `LLM_API_KEY` 经 `wrangler deploy --secrets-file .prod.secrets` 注入（无口令访问受守卫端点 403 已实测）。**剩余可选项**：①首页迁移 read API（ADR-0013 允许延后，现仍直连 daily.juya.uk）②自定义域名（可选）。日常运维：本地改代码 → `wrangler deploy --secrets-file .prod.secrets`；前端改动 → `npm run build` + `wrangler pages deploy out --project-name juya-daily-pro --branch main`（项目已改名为 juya-daily-pro，域名仍是 juya-daily.pages.dev）。
 
 ## 范围边界
 
