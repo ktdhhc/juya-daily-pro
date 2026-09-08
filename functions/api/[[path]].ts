@@ -49,7 +49,9 @@ export async function onRequest(context: ProxyContext): Promise<Response> {
   let target: URL;
   try {
     target = new URL(url.pathname + url.search, origin);
-  } catch {
+  } catch (err) {
+    // 不吞异常：部署日「origin 写错」与「上游不可达」必须能区分（console + 502 message 各带原因）
+    console.error("[pages-proxy] WORKER_ORIGIN 非法：", err);
     return jsonError(
       502,
       "bad_gateway",
@@ -70,8 +72,11 @@ export async function onRequest(context: ProxyContext): Promise<Response> {
   let upstream: Response;
   try {
     upstream = await fetch(target, init);
-  } catch {
-    return jsonError(502, "bad_gateway", "上游不可达：Worker origin 无响应");
+  } catch (err) {
+    // 同上：排障需要知道是 DNS / TLS / 连接被拒，不能只回一句「不可达」
+    console.error("[pages-proxy] 上游不可达：", target.origin, err);
+    const reason = err instanceof Error ? err.message : String(err);
+    return jsonError(502, "bad_gateway", `上游不可达：Worker origin 无响应（${reason}）`);
   }
 
   // 原样返回上游响应：状态码 / 响应头 / 响应体均不改写

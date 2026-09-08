@@ -770,6 +770,8 @@ export async function runSyncCore(env: Env): Promise<SyncSummary> {
 }
 
 // 薄壳（spec15 票 01）：摘要 → 既有响应契约；HTTP 错误映射（普通 Error → 500 sync_failed）留在此层。
+// 注：核心当前只抛普通 Error（无 HttpError），故 catch 不做 rethrow；若未来核心引入 HttpError 语义，
+// 这里需恢复 `if (err instanceof HttpError) throw err`，否则具体状态码会被压成 500。
 async function syncNow(env: Env): Promise<Response> {
   try {
     const summary = await runSyncCore(env);

@@ -131,13 +131,13 @@ daily.juya.uk 每天早晨发布一期 AI 资讯合集（Daily Issue），把当
 | `ARCHIVE_URL` | var | `https://daily.juya.uk/archive/` | v1 |
 | `MD_BASE` | var | `https://daily.juya.uk/markdown` | v1 |
 | `SYNC_LOOKBACK_DAYS` | var | `3` | v1 |
-| `LLM_ENABLED` | var | `true` | 部署日（enrich 回填） |
-| `LLM_API_BASE` | var | `https://api.openai.com/v1` | 部署日 |
-| `LLM_MODEL` | var | `gpt-4o-mini` | 部署日 |
-| `ENRICH_CACHE_ENABLED` | var | `true` | 部署日 |
+| `LLM_API_BASE` | var | `https://api.deepseek.com` | 部署日 |
+| `LLM_MODEL` | var | `deepseek-v4-flash` | 部署日 |
 | `MAX_LLM_PER_RUN` | var | `20` | 部署日 |
-| `R2_BUCKET` | var | `juya-daily-archive` | 部署日（若评估迁 R2） |
 | `LLM_API_KEY` | secret | — | 部署日 |
+| `ADMIN_TOKEN` | secret | — | 部署日（不设=端点全开放，secrets.required 已强制） |
+
+> 2026-09-08（spec15 票 02）：`LLM_ENABLED` / `ENRICH_CACHE_ENABLED` / `R2_BUCKET` 零消费者，已从 wrangler.jsonc 移除；R2 随 ADR-0013 裁剪。
 
 cron 表达式在 `wrangler.jsonc.triggers.crons`，v1 留空，部署日启用；改频率需 redeploy（Cloudflare 平台限制）。
 

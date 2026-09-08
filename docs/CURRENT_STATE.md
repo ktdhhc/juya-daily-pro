@@ -14,7 +14,7 @@
 
 ## 当前阶段
 
-**阶段 0-5（v1 本地 MVP）+ spec06-13 全部完成（2026-09-02）**：read API + `POST /api/sync`（暂存写入、stagedDates/stagedItems 权威口径）+ 角色权限基座（口令制访客/管理员）+ 编辑工作流（同步-解析-入库三段，/review 收件台：数据流标头、**解析异步作业化——parse_state 落 D1、秒回+轮询+刷新恢复+409 双启动守卫+10min 陈旧自愈**、四态分组（待解析/缺候选待入册/已解析待确认/无需解析）、解析结果常驻、入库预览、同步历史与解析后日报回看、已发布缺主次条目可重解析）+ LLM 数据整理（325 条多家命中 role 回填）+ 数据面板（/dashboard 五段自绘图表）+ 阅读时间线 + 搜索联想与高亮。vitest 335 测试 + 双 typecheck + lint 门禁全绿，静态导出 46 页。**下一站部署日（阶段 6，需用户在场）**：Cloudflare 登录 → 替换 `database_id` → 生产 D1 迁移（schema + migrate-staging，注意 --file 原子事务语义见文件头注释）+ backfill → `wrangler deploy` + ADMIN_TOKEN/LLM_API_KEY secret → Pages + /api 同域代理 → 启用 cron（只写暂存不自动发布）。部署清单详见 `handoffs/260829-1242.md`。
+**阶段 0-5（v1 本地 MVP）+ spec06-15 全部完成（2026-09-08）**：read API + `POST /api/sync`（暂存写入、stagedDates/stagedItems 权威口径）+ 角色权限基座（口令制访客/管理员）+ 编辑工作流（同步-解析-入库三段，/review 收件台：今日流水线卡/待办 tab/同步运行记录、**解析异步作业化**——parse_state 落 D1、秒回+轮询+刷新恢复+409 双启动守卫+10min 陈旧自愈、四态分组、入库预览、已发布缺主次可重解析）+ LLM 数据整理（role 回填）+ 数据面板 + 阅读时间线 + 搜索联想与高亮 + **部署就绪化**（sync 核心抽取供 cron 复用、定时触发器已启用=北京 08:00-10:30 每半点自动同步+解析但不自动入库、Pages `/api` 同域代理 functions/、脚本 `--remote`、ADMIN_TOKEN 强制）。vitest 373 测试 + 双 typecheck + lint 门禁全绿，静态导出 46 页。**部署日（阶段 6，需用户在场）剩余动作**：Cloudflare 登录 → `wrangler d1 create` 建库并回填 `wrangler.jsonc` 的 `database_id` → 生产 D1 迁移（schema + migrate-staging，--file 为整体事务，见文件头引导）→ `wrangler deploy --secrets-file .prod.secrets`（首部署 secret 先有鸡先有蛋，必须用 secrets-file 一次注入 ADMIN_TOKEN/LLM_API_KEY；该文件已 gitignore）→ Pages 项目部署 + 项目变量 `WORKER_ORIGIN`=Worker 地址（functions/ 代理依赖）→ 首页迁移 read API。生产首轮回填用 `npm run backfill -- --remote`（或 enrich/sync 同款）。
 
 ## 范围边界
 

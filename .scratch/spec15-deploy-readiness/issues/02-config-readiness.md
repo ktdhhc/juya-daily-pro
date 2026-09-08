@@ -6,7 +6,11 @@
 
 **Status:** ready-for-agent
 
-- [ ] 移除已裁剪存储的绑定块与三个无人消费的变量（删除前 grep 复核零引用并留证据）
-- [ ] 管理口令加入部署必需密钥清单
-- [ ] `npx wrangler deploy --dry-run` 成功（证明部署不再被残留绑定挡住）
-- [ ] grep 证据：残留绑定与死变量清零；`npx tsc --noEmit -p worker` 绿
+- [x] 移除已裁剪存储的绑定块与三个无人消费的变量（删除前 grep 复核零引用并留证据）
+- [x] 管理口令加入部署必需密钥清单
+- [x] `npx wrangler deploy --dry-run` 成功（证明部署不再被残留绑定挡住）
+- [x] grep 证据：残留绑定与死变量清零；`npx tsc --noEmit -p worker` 绿
+
+## Comments
+
+2026-09-08 交付：R2 绑定与 3 死变量清零（grep 证据）；ADMIN_TOKEN 入 secrets.required（wrangler 源码级实证：首部署缺 secret 即失败）。审查发现首部署 secret 先有鸡先有蛋 → 部署清单改用 `wrangler deploy --secrets-file .prod.secrets`（已 gitignore），CURRENT_STATE 同步。

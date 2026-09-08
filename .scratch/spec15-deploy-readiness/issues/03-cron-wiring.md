@@ -6,8 +6,12 @@
 
 **Status:** ready-for-agent
 
-- [ ] 定时触发器表达式启用（北京时间 08-11 点每半点）
-- [ ] `wrangler dev --test-scheduled` 触发：同步运行记录 +1 行、解析状态按圈题结果更新、无未捕获异常（贴输出）
-- [ ] 无待解析目标时不发起 LLM 调用；解析进行中时不重复启动（跳过证据）
-- [ ] 不新增自动入库路径（publish 仍仅人工）
-- [ ] `npx vitest run worker/` 零回归；`npx tsc --noEmit -p worker` 绿
+- [x] 定时触发器表达式启用（北京时间 08-11 点每半点）
+- [x] `wrangler dev --test-scheduled` 触发：同步运行记录 +1 行、解析状态按圈题结果更新、无未捕获异常（贴输出）
+- [x] 无待解析目标时不发起 LLM 调用；解析进行中时不重复启动（跳过证据）
+- [x] 不新增自动入库路径（publish 仍仅人工）
+- [x] `npx vitest run worker/` 零回归；`npx tsc --noEmit -p worker` 绿
+
+## Comments
+
+2026-09-08 交付 + 主会话独立验收：crons 启用（北京 08:00-10:30 每半点）；独立起 8788 `--test-scheduled` 触发 → 200「Ran scheduled event」，sync_runs +1 行（15:42:39 · ok · 窗口 4 期 · 1606ms），日志「同步完成：写入 4 期，暂存 0 条，失败 0 期」+「无待解析目标，跳过解析」（零 LLM、零入库）；票内另实测有目标/解析进行中/无 publish 三路径。

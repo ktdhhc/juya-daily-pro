@@ -12,3 +12,4 @@ out/
 # Company Registry 真相源必须入库（ADR-0001）——覆盖用户全局 gitignore 的 data/ 规则
 !data/
 !data/**
+.prod.secrets

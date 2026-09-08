@@ -10,13 +10,12 @@ cron Worker 与 sync 流程的可调参数全部走 Cloudflare Worker 环境变�
 - `SYNC_LOOKBACK_DAYS`    幂等检查向后看的天数（默认 `3`），防 archive 单源漏期
 - `ARCHIVE_URL`           daily.juya.uk archive 地址，默认 `https://daily.juya.uk/archive/`
 - `MD_BASE`              markdown 基址，默认 `https://daily.juya.uk/markdown`
-- `LLM_ENABLED`          开关 LLM enrich 段，`"false"` 时多家归属降级为无 role
 - `LLM_API_BASE`         OpenAI 兼容协议 base URL
 - `LLM_API_KEY`          secret，不在 wrangler.jsonc 明文
 - `LLM_MODEL`            模型 ID
-- `ENRICH_CACHE_ENABLED` 是否读 D1 `enrich_cache` 表跳过已 enrich 的 item
-- `MAX_LLM_PER_RUN`      单次 cron 触发的最大 LLM 调用数（默认 `20`），防止失控
-- `R2_BUCKET`             已绑定的 R2 bucket 名，默认 `juya-daily-archive`
+- `MAX_LLM_PER_RUN`      单次解析运行的最大 LLM 调用数（默认 `20`），防止失控
+
+> 2026-09-08（spec15 票 02）：`LLM_ENABLED` / `ENRICH_CACHE_ENABLED` / `R2_BUCKET` 三个参数全仓零消费者，已从 wrangler.jsonc 移除（R2 随 ADR-0013 裁剪，另两个开关从未接线）；此处保留条目仅作历史记录。
 
 ## Why
 
