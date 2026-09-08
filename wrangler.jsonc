@@ -4,19 +4,17 @@
   "main": "worker/sync/index.ts",
   "compatibility_date": "2026-07-01",
   "triggers": {
-    // 部署日启用（ADR-0013）：["0,30 0,1,2 * * *"]
-    "crons": []
+    // spec15 票 03 启用：北京时间 08:00-10:30 每半点（UTC 0-2 时的 0/30 分，每日 6 次）；
+    // 定时任务只写暂存（published=0），入库仍由人工在审核台确认（ADR-0015）
+    "crons": ["0,30 0,1,2 * * *"]
   },
   "vars": {
     "ARCHIVE_URL": "https://daily.juya.uk/archive/",
     "MD_BASE": "https://daily.juya.uk/markdown",
     "SYNC_LOOKBACK_DAYS": "3",
-    "LLM_ENABLED": "true",
     "LLM_API_BASE": "https://api.deepseek.com",
     "LLM_MODEL": "deepseek-v4-flash",
-    "ENRICH_CACHE_ENABLED": "true",
-    "MAX_LLM_PER_RUN": "20",
-    "R2_BUCKET": "juya-daily-archive"
+    "MAX_LLM_PER_RUN": "20"
   },
   "d1_databases": [
     {
@@ -25,13 +23,7 @@
       "database_id": "REPLACE_WITH_REAL_D1_ID"
     }
   ],
-  "r2_buckets": [
-    {
-      "binding": "ARCHIVE",
-      "bucket_name": "juya-daily-archive"
-    }
-  ],
   "secrets": {
-    "required": ["LLM_API_KEY"]
+    "required": ["LLM_API_KEY", "ADMIN_TOKEN"]
   }
 }

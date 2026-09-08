@@ -1,18 +1,20 @@
 // match-all — spec03 Step 4.2：段一确定性匹配的本地 D1 胶水脚本。
-// 流程：wrangler --json 读 companies + items（--local 零登录）→ matchAll 纯编排（worker/sync/match.ts）
+// 流程：wrangler --json 读 companies + items（目标缺省 --local 零登录，--remote 连远端）→ matchAll 纯编排（worker/sync/match.ts）
 // → itemCompaniesUpsertSql + enrichStateUpdateSql（worker/sync/sqlgen.ts）→ 临时 SQL 文件
-// → `wrangler d1 execute --local --file` → 删除 → 打印统计。退出码语义同 backfill：有失败非 0。
-// 全程零 LLM 调用、零 Cloudflare 登录。
+// → `wrangler d1 execute <目标> --file` → 删除 → 打印统计。退出码语义同 backfill：有失败非 0。
+// 全程零 LLM 调用；缺省零 Cloudflare 登录（spec15 缝 1）。
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { Company } from "../src/lib/schema";
 import { matchAll } from "../worker/sync/match";
 import { enrichStateUpdateSql, itemCompaniesUpsertSql } from "../worker/sync/sqlgen";
-import { parseWranglerJson, runWrangler } from "./lib/wrangler-cli";
+import { parseDbTarget, parseWranglerJson, runWrangler } from "./lib/wrangler-cli";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DB = "juya-daily";
+// 数据库目标（spec15 缝 1）：缺省 --local 零登录；显式 --remote 连远端。
+const DB_TARGET = parseDbTarget(process.argv.slice(2));
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -37,7 +39,7 @@ interface ItemRow {
 }
 
 function queryRows<T>(sql: string, label: string): T[] {
-  const r = runWrangler(["d1", "execute", DB, "--local", "--command", sql, "--json"]);
+  const r = runWrangler(["d1", "execute", DB, DB_TARGET, "--command", sql, "--json"]);
   if (!r.ok) throw new Error(`${label} 查询失败：${r.stderr.slice(-400)}`);
   const arr = parseWranglerJson(r.stdout) as Array<{ results?: T[] }>;
   return arr[0]?.results ?? [];
@@ -46,7 +48,7 @@ function queryRows<T>(sql: string, label: string): T[] {
 // ---------- 主流程 ----------
 
 async function main(): Promise<void> {
-  console.log(`== match:all 开始（${new Date().toISOString()}，全程 --local 零登录）`);
+  console.log(`== match:all 开始（${new Date().toISOString()}，目标 ${DB_TARGET}）`);
 
   // 1) companies → Company[]（aliases 为 JSON 字符串需 parse）
   const companyRows = queryRows<CompanyRow>(
@@ -99,7 +101,7 @@ async function main(): Promise<void> {
     const tmpPath = path.join(ROOT, ".wrangler", `tmp-match-${Date.now()}.sql`);
     writeFileSync(tmpPath, statements.join("\n") + "\n", "utf8");
     console.log(`SQL 文件: ${path.relative(ROOT, tmpPath)}（${statements.length} 条语句）`);
-    const r = runWrangler(["d1", "execute", DB, "--local", "--file", path.relative(ROOT, tmpPath)]);
+    const r = runWrangler(["d1", "execute", DB, DB_TARGET, "--file", path.relative(ROOT, tmpPath)]);
     rmSync(tmpPath, { force: true }); // 成功失败均清理（.wrangler gitignored）
     if (!r.ok) {
       console.error("SQL 执行失败：");

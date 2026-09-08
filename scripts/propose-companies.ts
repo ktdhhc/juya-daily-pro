@@ -1,5 +1,5 @@
 // propose-companies — spec09 Step 3.2/3.3：missing_owner 条目的 LLM 候选公司提议（存量数据离线批跑）。
-// 流程：loadLlmConfig → wrangler --local 读 D1（missing_owner 条目 id 升序 + 在册公司名清单）
+// 流程：loadLlmConfig → wrangler 读 D1（目标缺省 --local 零登录，--remote 连远端；missing_owner 条目 id 升序 + 在册公司名清单）
 // → runWithLimiter 逐条三分类判别（company / product / ignore）→ 不直接入册：
 // company 建议按 id 去重合并（同 id 保留 evidence 最多 3 条）追加写 data/companies-pending.yaml
 // → 报告（company/product/ignore 分布 + 建议清单 + product 清单 + 失败清单）。
@@ -17,10 +17,12 @@ import {
   type ProposeVerdict,
 } from "../src/lib/llm/propose";
 import { chatJson, loadLlmConfig, runWithLimiter } from "./lib/llm";
-import { parseWranglerJson, runWrangler, varFromWranglerConfig } from "./lib/wrangler-cli";
+import { parseDbTarget, parseWranglerJson, runWrangler, varFromWranglerConfig } from "./lib/wrangler-cli";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DB = "juya-daily";
+// 数据库目标（spec15 缝 1）：缺省 --local 零登录；显式 --remote 连远端。
+const DB_TARGET = parseDbTarget(process.argv.slice(2));
 const PENDING_PATH = path.join(ROOT, "data", "companies-pending.yaml");
 
 // ---------- confidence 三档规则（简单启发，依据证据强度——是否含域名/官方产品名） ----------
@@ -66,7 +68,7 @@ interface ItemRow {
 }
 
 function queryRows<T>(sql: string, label: string): T[] {
-  const r = runWrangler(["d1", "execute", DB, "--local", "--command", sql, "--json"]);
+  const r = runWrangler(["d1", "execute", DB, DB_TARGET, "--command", sql, "--json"]);
   if (!r.ok) throw new Error(`${label} 查询失败：${r.stderr.slice(-400)}`);
   const arr = parseWranglerJson(r.stdout) as Array<{ results?: T[] }>;
   return arr[0]?.results ?? [];
@@ -174,7 +176,7 @@ async function main(): Promise<void> {
   const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 40;
 
   console.log(
-    `== propose-companies 开始（${new Date().toISOString()}，--local 零登录；` +
+    `== propose-companies 开始（${new Date().toISOString()}，目标 ${DB_TARGET}；` +
       `--limit=${limit}，并发上限 ${maxLlm}）`,
   );
 

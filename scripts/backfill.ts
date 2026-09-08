@@ -1,7 +1,7 @@
 // backfill — spec02 3.4：全量回填 I/O 胶水。
 // 纯逻辑（archive 解析 / issue 解析 / SQL 生成）已在 worker/sync/* 测过（ADR-0011）；
-// 本脚本只做：fetch → parse → SQL 累积 → 临时 SQL 文件 → `wrangler d1 execute juya-daily --local --file`
-// → 失败降级逐期分块 → counts 查询打印。全程零 Cloudflare 登录（仅 --local）。
+// 本脚本只做：fetch → parse → SQL 累积 → 临时 SQL 文件 → `wrangler d1 execute juya-daily <目标> --file`
+// → 失败降级逐期分块 → counts 查询打印。缺省 --local（零 Cloudflare 登录）；显式 --remote 连远端（需 wrangler 登录，spec15 缝 1）。
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -9,13 +9,15 @@ import type { Item } from "../src/lib/schema";
 import { parseArchiveDates } from "../worker/sync/archive";
 import { parseIssue } from "../worker/sync/parse";
 import { companiesUpsertSql, itemsUpsertSql, sourcesUpsertSql } from "../worker/sync/sqlgen";
-import { parseWranglerJson, runWrangler, varFromWranglerConfig } from "./lib/wrangler-cli";
+import { parseDbTarget, parseWranglerJson, runWrangler, varFromWranglerConfig } from "./lib/wrangler-cli";
 import { REGISTRY } from "../src/lib/registry.generated";
 
 // ---------- 常量 / 环境 ----------
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DB = "juya-daily";
+// 数据库目标（spec15 缝 1）：缺省 --local 零登录；显式 --remote 连远端（部署日回填生产库）。
+const DB_TARGET = parseDbTarget(process.argv.slice(2));
 
 // ARCHIVE_URL / MD_BASE 与 worker 运行时同源：从 wrangler.jsonc vars 读取（spec05 起共享
 // varFromWranglerConfig 迁至 scripts/lib/wrangler-cli.ts，此处仅 import，行为不变）。
@@ -90,7 +92,7 @@ function queryCounts(): Counts {
     "SELECT (SELECT COUNT(*) FROM sources) AS sources, " +
     "(SELECT COUNT(*) FROM items) AS items, " +
     "(SELECT COUNT(*) FROM companies) AS companies;";
-  const r = runWrangler(["d1", "execute", DB, "--local", "--command", sql, "--json"]);
+  const r = runWrangler(["d1", "execute", DB, DB_TARGET, "--command", sql, "--json"]);
   if (!r.ok) throw new Error(`counts 查询失败：${r.stderr.slice(-400)}`);
   const arr = parseWranglerJson(r.stdout) as Array<{ results?: Array<Record<string, unknown>> }>;
   const row = arr[0]?.results?.[0] ?? {};
@@ -119,7 +121,7 @@ function executePerChunk(companiesSql: string, issues: FetchedIssue[]): string[]
   for (const chunk of chunks) {
     const chunkPath = path.join(chunkDir, `tmp-backfill-chunk-${Date.now()}.sql`);
     writeFileSync(chunkPath, chunk.sql + "\n", "utf8");
-    const r = runWrangler(["d1", "execute", DB, "--local", "--file", path.relative(ROOT, chunkPath)]);
+    const r = runWrangler(["d1", "execute", DB, DB_TARGET, "--file", path.relative(ROOT, chunkPath)]);
     rmSync(chunkPath, { force: true });
     console.log(`  chunk ${chunk.label}: ${r.ok ? "成功" : "失败"}`);
     if (!r.ok) failed.push(chunk.label);
@@ -130,7 +132,7 @@ function executePerChunk(companiesSql: string, issues: FetchedIssue[]): string[]
 // ---------- 主流程 ----------
 
 async function main(): Promise<void> {
-  console.log(`== backfill 开始（${new Date().toISOString()}，全程 --local 零登录）`);
+  console.log(`== backfill 开始（${new Date().toISOString()}，目标 ${DB_TARGET}）`);
 
   // 1) archive → 期日期列表
   const dates = parseArchiveDates(await fetchText(ARCHIVE_URL));
@@ -173,7 +175,7 @@ async function main(): Promise<void> {
   console.log(`SQL 文件: ${path.relative(ROOT, tmpPath)}（${statements.length} 条语句）`);
 
   const relTmp = path.relative(ROOT, tmpPath);
-  const whole = runWrangler(["d1", "execute", DB, "--local", "--file", relTmp]);
+  const whole = runWrangler(["d1", "execute", DB, DB_TARGET, "--file", relTmp]);
   let chunkFailures: string[] = [];
   if (whole.ok) {
     console.log("整文件执行成功");

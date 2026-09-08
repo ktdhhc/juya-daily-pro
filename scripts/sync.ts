@@ -4,11 +4,11 @@
 // → 并发 3 抓新期（单期重试 1 次）→ parseIssue → matchAll（读 D1 companies，worker/sync/match.ts）
 // → SQL 累积：sources/items（staged 写入 published=0，spec10，与 POST /api/sync 同语义）
 //   + item_companies/enrich_state + 每期 syncLogUpsertSql(该期, 'ok', "")
-// → 临时 SQL 文件 → `wrangler d1 execute juya-daily --local --file` → 删除 → counts + sync_log 尾部打印。
+// → 临时 SQL 文件 → `wrangler d1 execute juya-daily <目标> --file` → 删除 → counts + sync_log 尾部打印。
 // 失败期（fetch/parse 抛错）不入数据 SQL，改写 syncLogUpsertSql(期, 'fetch_failed'|'parse_failed', 错误消息)，
 // 不阻塞后续期（ADR-0008）；结束有失败 → 退出码 1。
 // `--dates=a,b` 强制指定期次（补拉与 404 演练），跳过窗口计算。
-// 全程零 Cloudflare 登录（仅 --local）、零 LLM。
+// 缺省 --local（零 Cloudflare 登录）、零 LLM；显式 --remote 连远端（需 wrangler 登录，spec15 缝 1）。
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -27,12 +27,14 @@ import {
   sourcesUpsertSql,
   syncLogUpsertSql,
 } from "../worker/sync/sqlgen";
-import { parseWranglerJson, runWrangler, varFromWranglerConfig } from "./lib/wrangler-cli";
+import { parseDbTarget, parseWranglerJson, runWrangler, varFromWranglerConfig } from "./lib/wrangler-cli";
 
 // ---------- 常量 / 环境 ----------
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DB = "juya-daily";
+// 数据库目标（spec15 缝 1）：缺省 --local 零登录；显式 --remote 连远端。
+const DB_TARGET = parseDbTarget(process.argv.slice(2));
 
 const ARCHIVE_URL = varFromWranglerConfig("ARCHIVE_URL", "https://daily.juya.uk/archive/");
 const MD_BASE = varFromWranglerConfig("MD_BASE", "https://daily.juya.uk/markdown");
@@ -101,7 +103,7 @@ async function fetchOneIssue(date: string): Promise<IssueOutcome> {
 // ---------- D1 读取 / 写入 ----------
 
 function queryScalar(sql: string, label: string): unknown {
-  const r = runWrangler(["d1", "execute", DB, "--local", "--command", sql, "--json"]);
+  const r = runWrangler(["d1", "execute", DB, DB_TARGET, "--command", sql, "--json"]);
   if (!r.ok) throw new Error(`${label} 查询失败：${r.stderr.slice(-400)}`);
   const arr = parseWranglerJson(r.stdout) as Array<{ results?: Array<Record<string, unknown>> }>;
   return arr[0]?.results?.[0];
@@ -125,7 +127,7 @@ interface CompanyRow {
 
 function queryCompanies(): Company[] {
   const r = runWrangler([
-    "d1", "execute", DB, "--local", "--command",
+    "d1", "execute", DB, DB_TARGET, "--command",
     "SELECT id, name, aliases, color, status, notes FROM companies ORDER BY id;", "--json",
   ]);
   if (!r.ok) throw new Error(`companies 查询失败：${r.stderr.slice(-400)}`);
@@ -154,7 +156,7 @@ function executeSqlFile(statements: string[], label: string): void {
   const tmpPath = path.join(ROOT, ".wrangler", `tmp-sync-${label}-${Date.now()}.sql`);
   writeFileSync(tmpPath, statements.filter((s) => s !== "").join("\n") + "\n", "utf8");
   console.log(`SQL 文件: ${path.relative(ROOT, tmpPath)}（${label}，${statements.length} 条语句）`);
-  const r = runWrangler(["d1", "execute", DB, "--local", "--file", path.relative(ROOT, tmpPath)]);
+  const r = runWrangler(["d1", "execute", DB, DB_TARGET, "--file", path.relative(ROOT, tmpPath)]);
   rmSync(tmpPath, { force: true });
   if (!r.ok) {
     console.error("SQL 执行失败：");
@@ -185,7 +187,7 @@ function printSyncLogTail(): void {
   const sql =
     "SELECT date, status, substr(error_message,1,40) AS error_message " +
     "FROM sync_log ORDER BY attempted_at DESC LIMIT 6;";
-  const r = runWrangler(["d1", "execute", DB, "--local", "--command", sql, "--json"]);
+  const r = runWrangler(["d1", "execute", DB, DB_TARGET, "--command", sql, "--json"]);
   if (!r.ok) {
     console.error(`sync_log 查询失败：${r.stderr.slice(-400)}`);
     return;
@@ -218,7 +220,7 @@ function parseDatesArg(argv: string[]): string[] | null {
 
 async function main(): Promise<void> {
   const datesArg = parseDatesArg(process.argv.slice(2));
-  console.log(`== sync 开始（${new Date().toISOString()}，全程 --local 零登录）`);
+  console.log(`== sync 开始（${new Date().toISOString()}，目标 ${DB_TARGET}）`);
   console.log(`vars: ARCHIVE_URL=${ARCHIVE_URL} MD_BASE=${MD_BASE} SYNC_LOOKBACK_DAYS=${LOOKBACK_DAYS}`);
 
   // 0) registry 镜像刷新（spec06 契约扩展 3 + A4）：upsert 当前 yaml registry → prune 已移除 id。

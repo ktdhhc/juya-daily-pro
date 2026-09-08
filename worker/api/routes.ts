@@ -539,6 +539,8 @@ async function companyProfile(companyId: string, env: Env): Promise<Response> {
 // 增量窗口通常 ≤4 期（SYNC_LOOKBACK_DAYS 默认 3）；全量场景由 backfill 承担——端点不提供全量模式。
 // 单期容错同脚本：失败期仅 sync_log（fetch_failed/parse_failed），不阻塞后续期（ADR-0008）。
 // 每次运行批尾执行 companiesPruneSql（registry 镜像删除语义，ADR-0001）。
+// spec15 票 01 分界：runSyncCore = 同步核心（流水线 + sync_runs 落库 + 结构化摘要，抛普通 Error，
+// 不含 HTTP 语义，供手动端点与定时任务共用）；syncNow = 薄壳（摘要 → 既有响应契约 + HTTP 错误映射）。
 
 const SYNC_CONCURRENCY = 3; // 与 scripts/sync.ts 同值：并发抓取
 const SYNC_FETCH_TIMEOUT_MS = 30_000;
@@ -612,147 +614,176 @@ interface SyncCompanyRow {
   notes: string;
 }
 
-async function syncNow(env: Env): Promise<Response> {
+/** 同步核心摘要（spec15 票 01）：一次同步运行的结果，HTTP 响应与 sync_runs 记录同源 */
+export interface SyncSummary {
+  dates: string[]; // 实际写入的期（成功期，升序 = 执行序）
+  stagedDates: string[]; // 同步执行后 items.published=0 的期
+  stagedItems: number; // 同步执行后 published=0 条目总数
+  added: string[]; // 三分类：不在库（新增）
+  updated: string[]; // 三分类：内容有变（更新）
+  unchanged: string[]; // 三分类：内容相同（未变化）
+  failures: { date: string; error: string }[]; // 失败期与错误消息
+  durationMs: number; // 核心函数起止实测耗时
+}
+
+// 同步核心（spec15 票 01）：手动端点与定时任务的唯一同步实现；抛普通 Error，HTTP 语义由薄壳映射。
+export async function runSyncCore(env: Env): Promise<SyncSummary> {
   // spec14 契约 B：函数起点计时（duration_ms 实测口径）与 started_at（ISO now）；
-  // 成功路径响应前落 sync_runs 一行运行记录（异常路径不落——表语义为「运行完成的摘要」）。
+  // 成功路径返回前落 sync_runs 一行运行记录（异常路径不落——表语义为「运行完成的摘要」）。
   const startedAt = new Date().toISOString();
   const startedMs = Date.now();
-  try {
-    const { archiveUrl, mdBase, lookbackDays } = syncVars(env);
+  const { archiveUrl, mdBase, lookbackDays } = syncVars(env);
 
-    // 1) 窗口：max(items.date)（经 binding）→ archive 期列表 → selectSyncDates（pipeline 纯函数）。
-    // archive 抓取是单点（无逐期容错可比），超时/网络抖动重试 1 次（同 fetchOneIssue 节奏）——
-    // 20260903 实测源站抖动时 archive 30s 超时直接 500，两次均失败才向上抛。
-    let archiveText = "";
-    let archiveError = "";
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        archiveText = await fetchText(archiveUrl);
-        archiveError = "";
-        break;
-      } catch (err) {
-        archiveError = err instanceof Error ? err.message : String(err);
-        if (attempt === 1) await sleep(800);
-      }
+  // 1) 窗口：max(items.date)（经 binding）→ archive 期列表 → selectSyncDates（pipeline 纯函数）。
+  // archive 抓取是单点（无逐期容错可比），超时/网络抖动重试 1 次（同 fetchOneIssue 节奏）——
+  // 20260903 实测源站抖动时 archive 30s 超时直接 500，两次均失败才向上抛。
+  let archiveText = "";
+  let archiveError = "";
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      archiveText = await fetchText(archiveUrl);
+      archiveError = "";
+      break;
+    } catch (err) {
+      archiveError = err instanceof Error ? err.message : String(err);
+      if (attempt === 1) await sleep(800);
     }
-    if (archiveText === "") {
-      throw new HttpError(500, "sync_failed", `归档页抓取失败（已重试）：${archiveError}`);
-    }
-    const maxRow = await env.DB.prepare("SELECT MAX(date) AS m FROM items").first<{ m: string | null }>();
-    const archiveDates = parseArchiveDates(archiveText);
-    if (archiveDates.length === 0) {
-      throw new HttpError(500, "sync_failed", "archive 页未解析到任何期日期");
-    }
-    const dates = selectSyncDates(archiveDates, maxRow?.m ?? null, lookbackDays);
+  }
+  if (archiveText === "") {
+    throw new Error(`归档页抓取失败（已重试）：${archiveError}`);
+  }
+  const maxRow = await env.DB.prepare("SELECT MAX(date) AS m FROM items").first<{ m: string | null }>();
+  const archiveDates = parseArchiveDates(archiveText);
+  if (archiveDates.length === 0) {
+    throw new Error("archive 页未解析到任何期日期");
+  }
+  const dates = selectSyncDates(archiveDates, maxRow?.m ?? null, lookbackDays);
 
-    // 2) companies 镜像（经 binding 读）→ 段一匹配 registry（同 scripts/sync.ts / match-all）
-    const companyRows = await env.DB.prepare(
-      "SELECT id, name, aliases, color, status, notes FROM companies ORDER BY id",
-    ).all<SyncCompanyRow>();
-    const registry: Company[] = companyRows.results.map((c) => ({
-      id: c.id,
-      name: c.name,
-      aliases: JSON.parse(c.aliases) as string[],
-      color: c.color,
-      status: c.status as Company["status"],
-      notes: c.notes,
-    }));
+  // 2) companies 镜像（经 binding 读）→ 段一匹配 registry（同 scripts/sync.ts / match-all）
+  const companyRows = await env.DB.prepare(
+    "SELECT id, name, aliases, color, status, notes FROM companies ORDER BY id",
+  ).all<SyncCompanyRow>();
+  const registry: Company[] = companyRows.results.map((c) => ({
+    id: c.id,
+    name: c.name,
+    aliases: JSON.parse(c.aliases) as string[],
+    color: c.color,
+    status: c.status as Company["status"],
+    notes: c.notes,
+  }));
 
-    // 3) 并发抓取 + 解析 + SQL 累积（成功期五件套；失败期仅 sync_log）
-    // batch 的每个元素须恰为一条完整语句：enrichStateUpdateSql / companiesPruneSql 产物是
-    // 「单语句单行 × N」以 \n 连接，按 \n 拆分安全；其余生成器各为单语句，
-    // 字面量内换行（markdown 正文）随语句整体交给 prepare 引号感知解析。
-    // spec10：sources/items 一律 staged 写入（published=0，人工审核 publish 后才对访客可见）；
-    // matchAll / registry 镜像 / enrich_state 回写语义不变。
-    const synced: string[] = [];
-    const failures: { date: string; error: string }[] = [];
-    const statements: string[] = [];
-    const outcomes = await mapPool(dates, SYNC_CONCURRENCY, (d) => fetchOneIssue(d, mdBase));
-    // 消息诚实化：抓取完成后、写库前，取窗口期在库现存的 markdown 做三分类（新增/有更新/未变化）。
-    // 只影响响应口径与提示语；写库行为不变（每期照常重匹配，注册新公司后点同步仍能补归属）。
-    const okOutcomes = outcomes.filter((o) => o.ok);
-    const existingMarkdown = new Map<string, string>();
-    if (okOutcomes.length > 0) {
-      const placeholders = okOutcomes.map(() => "?").join(", ");
-      const existingRows = await env.DB.prepare(
-        `SELECT date, markdown FROM sources WHERE date IN (${placeholders})`,
-      )
-        .bind(...okOutcomes.map((o) => o.parsedDate))
-        .all<{ date: string; markdown: string }>();
-      for (const r of existingRows.results) existingMarkdown.set(r.date, r.markdown);
+  // 3) 并发抓取 + 解析 + SQL 累积（成功期五件套；失败期仅 sync_log）
+  // batch 的每个元素须恰为一条完整语句：enrichStateUpdateSql / companiesPruneSql 产物是
+  // 「单语句单行 × N」以 \n 连接，按 \n 拆分安全；其余生成器各为单语句，
+  // 字面量内换行（markdown 正文）随语句整体交给 prepare 引号感知解析。
+  // spec10：sources/items 一律 staged 写入（published=0，人工审核 publish 后才对访客可见）；
+  // matchAll / registry 镜像 / enrich_state 回写语义不变。
+  const synced: string[] = [];
+  const failures: { date: string; error: string }[] = [];
+  const statements: string[] = [];
+  const outcomes = await mapPool(dates, SYNC_CONCURRENCY, (d) => fetchOneIssue(d, mdBase));
+  // 消息诚实化：抓取完成后、写库前，取窗口期在库现存的 markdown 做三分类（新增/有更新/未变化）。
+  // 只影响响应口径与提示语；写库行为不变（每期照常重匹配，注册新公司后点同步仍能补归属）。
+  const okOutcomes = outcomes.filter((o) => o.ok);
+  const existingMarkdown = new Map<string, string>();
+  if (okOutcomes.length > 0) {
+    const placeholders = okOutcomes.map(() => "?").join(", ");
+    const existingRows = await env.DB.prepare(
+      `SELECT date, markdown FROM sources WHERE date IN (${placeholders})`,
+    )
+      .bind(...okOutcomes.map((o) => o.parsedDate))
+      .all<{ date: string; markdown: string }>();
+    for (const r of existingRows.results) existingMarkdown.set(r.date, r.markdown);
+  }
+  // 暂存期集合（写库前取，二轮补正：在库但 published=0 的期归入「新增」而非「未变化」）
+  const stagedBeforeRows = await env.DB.prepare(
+    "SELECT DISTINCT date FROM items WHERE published = 0",
+  ).all<{ date: string }>();
+  const stagedBefore = new Set(stagedBeforeRows.results.map((r) => r.date));
+  const { added, updated, unchanged } = classifyWindow(
+    okOutcomes.map((o) => ({ date: o.parsedDate, markdown: o.markdown })),
+    existingMarkdown,
+    stagedBefore,
+  );
+  for (const o of outcomes) {
+    if (!o.ok) {
+      failures.push({ date: o.date, error: o.error });
+      statements.push(syncLogUpsertSql(o.date, o.status, o.error));
+      continue;
     }
-    // 暂存期集合（写库前取，二轮补正：在库但 published=0 的期归入「新增」而非「未变化」）
-    const stagedBeforeRows = await env.DB.prepare(
-      "SELECT DISTINCT date FROM items WHERE published = 0",
-    ).all<{ date: string }>();
-    const stagedBefore = new Set(stagedBeforeRows.results.map((r) => r.date));
-    const { added, updated, unchanged } = classifyWindow(
-      okOutcomes.map((o) => ({ date: o.parsedDate, markdown: o.markdown })),
-      existingMarkdown,
-      stagedBefore,
+    const { ownerRows, okIds, missingIds } = matchAll(o.items, registry);
+    statements.push(
+      sourcesUpsertSql(o.parsedDate, o.markdown, { staged: true }),
+      itemsUpsertSql(o.items, { staged: true }),
+      itemCompaniesUpsertSql(ownerRows),
+      ...enrichStateUpdateSql(okIds, missingIds).split("\n").filter((s) => s !== ""),
+      syncLogUpsertSql(o.date, "ok", ""),
     );
-    for (const o of outcomes) {
-      if (!o.ok) {
-        failures.push({ date: o.date, error: o.error });
-        statements.push(syncLogUpsertSql(o.date, o.status, o.error));
-        continue;
-      }
-      const { ownerRows, okIds, missingIds } = matchAll(o.items, registry);
-      statements.push(
-        sourcesUpsertSql(o.parsedDate, o.markdown, { staged: true }),
-        itemsUpsertSql(o.items, { staged: true }),
-        itemCompaniesUpsertSql(ownerRows),
-        ...enrichStateUpdateSql(okIds, missingIds).split("\n").filter((s) => s !== ""),
-        syncLogUpsertSql(o.date, "ok", ""),
-      );
-      synced.push(o.date);
-    }
-    // registry 镜像 prune 每次运行都执行（spec06 契约扩展 3），置于批尾
-    statements.push(...companiesPruneSql(REGISTRY.map((c) => c.id)).split("\n").filter((s) => s !== ""));
+    synced.push(o.date);
+  }
+  // registry 镜像 prune 每次运行都执行（spec06 契约扩展 3），置于批尾
+  statements.push(...companiesPruneSql(REGISTRY.map((c) => c.id)).split("\n").filter((s) => s !== ""));
 
-    // 4) 全字面量 SQL 经 binding 执行（无绑定参数）。注意不用 env.DB.exec——它按裸换行拆分语句，
-    // 会把 markdown 字面量内的换行误判为语句边界（实测 D1_EXEC_ERROR）；prepare 引号感知解析完整语句，
-    // batch 保序执行（隐式事务，部分失败整体回滚）。
-    const batch = statements.filter((s) => s !== "").map((s) => env.DB.prepare(s));
-    if (batch.length > 0) await env.DB.batch(batch);
+  // 4) 全字面量 SQL 经 binding 执行（无绑定参数）。注意不用 env.DB.exec——它按裸换行拆分语句，
+  // 会把 markdown 字面量内的换行误判为语句边界（实测 D1_EXEC_ERROR）；prepare 引号感知解析完整语句，
+  // batch 保序执行（隐式事务，部分失败整体回滚）。
+  const batch = statements.filter((s) => s !== "").map((s) => env.DB.prepare(s));
+  if (batch.length > 0) await env.DB.batch(batch);
 
-    // 响应契约：ok = 窗口内全部成功；dates = 实际写入的期（成功期，升序 = 执行序）；
-    // stagedDates = 同步执行后 items.published=0 的期（真有暂存的权威口径，spec11 契约 A——
-    // 重同步已发布期时不再误报「待审核」）；stagedItems = published=0 条目总数（spec12 契约 A，
-    // 与 stagedDates 同源：一条 GROUP BY 同时取 DISTINCT date 与逐期计数，总数 = 逐期 cnt 求和）；
-    // added/updated/unchanged = 窗口三分类（消息诚实化：不在库/内容有变/内容相同）；
-    // failures = 失败期与错误消息（与 dates 划分整个窗口）
-    const stagedRows = await env.DB.prepare(
-      "SELECT date, COUNT(*) AS cnt FROM items WHERE published = 0 GROUP BY date ORDER BY date ASC",
-    ).all<{ date: string; cnt: number }>();
-    const stagedDates = stagedRows.results.map((r) => r.date);
-    const stagedItems = stagedRows.results.reduce((acc, r) => acc + Number(r.cnt), 0);
+  // 摘要契约（薄壳逐字段映射进响应；ok = 窗口内全部成功由薄壳按 failures 计算）：
+  // dates = 实际写入的期（成功期，升序 = 执行序）；
+  // stagedDates = 同步执行后 items.published=0 的期（真有暂存的权威口径，spec11 契约 A——
+  // 重同步已发布期时不再误报「待审核」）；stagedItems = published=0 条目总数（spec12 契约 A，
+  // 与 stagedDates 同源：一条 GROUP BY 同时取 DISTINCT date 与逐期计数，总数 = 逐期 cnt 求和）；
+  // added/updated/unchanged = 窗口三分类（消息诚实化：不在库/内容有变/内容相同）；
+  // failures = 失败期与错误消息（与 dates 划分整个窗口）
+  const stagedRows = await env.DB.prepare(
+    "SELECT date, COUNT(*) AS cnt FROM items WHERE published = 0 GROUP BY date ORDER BY date ASC",
+  ).all<{ date: string; cnt: number }>();
+  const stagedDates = stagedRows.results.map((r) => r.date);
+  const stagedItems = stagedRows.results.reduce((acc, r) => acc + Number(r.cnt), 0);
 
-    // spec14 契约 B：响应成功路径落一行 sync_runs 运行记录（窗口 / 三分类 / 失败 JSON 化，
-    // duration_ms 为函数起止实测，ok = failures.length === 0 → 1/0）
-    await insertSyncRun(env, {
-      startedAt,
-      durationMs: Date.now() - startedMs,
-      windowDates: dates,
-      added,
-      updated,
-      unchanged,
-      failures,
-      stagedItems,
-    });
+  // spec14 契约 B：返回前落一行 sync_runs 运行记录（窗口 / 三分类 / 失败 JSON 化，
+  // duration_ms 为函数起止实测，ok = failures.length === 0 → 1/0）
+  const durationMs = Date.now() - startedMs;
+  await insertSyncRun(env, {
+    startedAt,
+    durationMs,
+    windowDates: dates,
+    added,
+    updated,
+    unchanged,
+    failures,
+    stagedItems,
+  });
 
+  return {
+    dates: synced,
+    stagedDates,
+    stagedItems,
+    added,
+    updated,
+    unchanged,
+    failures,
+    durationMs,
+  };
+}
+
+// 薄壳（spec15 票 01）：摘要 → 既有响应契约；HTTP 错误映射（普通 Error → 500 sync_failed）留在此层。
+async function syncNow(env: Env): Promise<Response> {
+  try {
+    const summary = await runSyncCore(env);
     return jsonOk({
-      ok: failures.length === 0,
-      dates: synced,
-      stagedDates,
-      stagedItems,
-      added,
-      updated,
-      unchanged,
-      failures,
+      ok: summary.failures.length === 0,
+      dates: summary.dates,
+      stagedDates: summary.stagedDates,
+      stagedItems: summary.stagedItems,
+      added: summary.added,
+      updated: summary.updated,
+      unchanged: summary.unchanged,
+      failures: summary.failures,
     });
   } catch (err) {
-    if (err instanceof HttpError) throw err;
     throw new HttpError(500, "sync_failed", err instanceof Error ? err.message : String(err));
   }
 }

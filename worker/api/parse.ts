@@ -809,14 +809,20 @@ export interface StartParseResult {
 
 // POST /api/parse 异步作业入口（spec13 契约 B）：busy 守卫 → 启动阶段圈题计数 → 置 running →
 // 立即返回 → 执行体经 ctx.waitUntil 续跑（无 ctx 回退 await 同步执行）。
-export async function startParse(env: ParseEnv, ctx?: ExecutionContext): Promise<StartParseResult> {
+// preContext（spec15 票 03）：定时任务已圈题时透传，避免同一轮重复查询；缺省自行圈题，
+// HTTP 路径行为不变（busy 守卫与 409 语义仍由本函数唯一裁决）。
+export async function startParse(
+  env: ParseEnv,
+  ctx?: ExecutionContext,
+  preContext?: ParseJobContext,
+): Promise<StartParseResult> {
   const prev = await readParseState(env);
   const now = new Date();
   if (parseBusy(prev, now)) {
     return { started: false, state: assembleParseState(prev) };
   }
   // 圈题查询提前到启动阶段：total=本轮圈题数（未按 MAX_LLM_PER_RUN 截断，与 remaining 口径一致）
-  const context = await collectParseContext(env);
+  const context = preContext ?? (await collectParseContext(env));
   const startedAt = now.toISOString();
   const total = context.totalTargets;
   await writeParseState(env, {

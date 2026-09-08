@@ -1,5 +1,5 @@
 // enrich — spec09 Step 2.3：多家命中条目（item_companies ≥2）的 LLM 归属裁决回填（存量数据离线批跑）。
-// 流程：loadLlmConfig → wrangler --local 读 D1（多家命中条目 item_id 升序 + title/body + 候选）
+// 流程：loadLlmConfig → wrangler 读 D1（目标缺省 --local 零登录，--remote 连远端；多家命中条目 item_id 升序 + title/body + 候选）
 // → 跳过已有 enrich_cache（--force 重算）→ MAX_LLM_PER_RUN 限流（wrangler.jsonc vars 默认 20，
 // --max= 覆盖；--limit=N 圈前 N 条待裁决条目）→ chatJson 裁决 → 纯函数 parse/derive
 // → 逐 item 写库（enrich_cache upsert + item_companies role 回写，COALESCE 防清摆）→ 报告。
@@ -22,10 +22,12 @@ import { enrichApplySql, enrichReapplySql } from "../src/lib/llm/enrich-sql";
 import { matchCandidates } from "../src/lib/matchCompanies";
 import { escapeSqlText } from "../worker/sync/sqlgen";
 import { chatJson, loadLlmConfig, runWithLimiter } from "./lib/llm";
-import { parseWranglerJson, runWrangler, varFromWranglerConfig } from "./lib/wrangler-cli";
+import { parseDbTarget, parseWranglerJson, runWrangler, varFromWranglerConfig } from "./lib/wrangler-cli";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DB = "juya-daily";
+// 数据库目标（spec15 缝 1）：缺省 --local 零登录；显式 --remote 连远端。
+const DB_TARGET = parseDbTarget(process.argv.slice(2));
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -81,7 +83,7 @@ interface CompanyRow {
 }
 
 function queryRows<T>(sql: string, label: string): T[] {
-  const r = runWrangler(["d1", "execute", DB, "--local", "--command", sql, "--json"]);
+  const r = runWrangler(["d1", "execute", DB, DB_TARGET, "--command", sql, "--json"]);
   if (!r.ok) throw new Error(`${label} 查询失败：${r.stderr.slice(-400)}`);
   const arr = parseWranglerJson(r.stdout) as Array<{ results?: T[] }>;
   return arr[0]?.results ?? [];
@@ -139,7 +141,7 @@ function applyMode(args: Args): void {
     }
     const tmpPath = path.join(ROOT, ".wrangler", `tmp-enrich-apply-${row.item_id}-${Date.now()}.sql`);
     writeFileSync(tmpPath, enrichReapplySql(row.item_id, verdicts) + "\n", "utf8");
-    const w = runWrangler(["d1", "execute", DB, "--local", "--file", path.relative(ROOT, tmpPath)]);
+    const w = runWrangler(["d1", "execute", DB, DB_TARGET, "--file", path.relative(ROOT, tmpPath)]);
     rmSync(tmpPath, { force: true });
     if (!w.ok) {
       failures.push(
@@ -176,7 +178,7 @@ async function main(): Promise<void> {
   const maxLlm = Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : 20;
 
   console.log(
-    `== enrich 开始（${new Date().toISOString()}，--local 零登录；单次 LLM 调用上限 ${maxLlm}` +
+    `== enrich 开始（${new Date().toISOString()}，目标 ${DB_TARGET}；单次 LLM 调用上限 ${maxLlm}` +
       `${args.limit !== undefined ? `，--limit=${args.limit}` : ""}${args.force ? "，--force" : ""}）`,
   );
 
@@ -293,7 +295,7 @@ async function main(): Promise<void> {
     }
     const tmpPath = path.join(ROOT, ".wrangler", `tmp-enrich-${r.entry.id}-${Date.now()}.sql`);
     writeFileSync(tmpPath, enrichApplySql(r.entry.id, r.verdicts, cfg.model) + "\n", "utf8");
-    const w = runWrangler(["d1", "execute", DB, "--local", "--file", path.relative(ROOT, tmpPath)]);
+    const w = runWrangler(["d1", "execute", DB, DB_TARGET, "--file", path.relative(ROOT, tmpPath)]);
     rmSync(tmpPath, { force: true });
     if (!w.ok) {
       failureLines.push(

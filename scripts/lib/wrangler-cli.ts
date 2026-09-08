@@ -2,7 +2,7 @@
 // 自 scripts/backfill.ts 原样迁移 runWrangler / parseWranglerJson，供 backfill 与
 // match-all 两个脚本复用；函数体逐行不变，仅 ROOT 的推导因目录深度少一级而调整
 // （scripts/lib/ 上跳两级 = 仓库根，与迁移前同指一处，行为不变）。
-// 全程仅 --local，零 Cloudflare 登录。
+// 缺省仅 --local（零 Cloudflare 登录）；显式 --remote 时连远端（需 wrangler 登录，spec15 缝 1）。
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,15 @@ export interface WranglerResult {
   ok: boolean;
   stdout: string;
   stderr: string;
+}
+
+// 数据库目标（spec15 缝 1）：缺省本地 --local（零登录开发流程不变）；显式 --remote 连远端。
+export type DbTarget = "--local" | "--remote";
+
+// 命令行目标解析（纯函数）：argv 含 --remote → 远端，否则本地（缺省）。
+// 其他参数（--dates= / --limit= / --force / --item= 等）一律忽略，与出现位置无关。
+export function parseDbTarget(argv: string[]): DbTarget {
+  return argv.includes("--remote") ? "--remote" : "--local";
 }
 
 // 本地零登录执行 wrangler CLI：优先直跑本地 bin（node + wrangler.js，无 shell 转义歧义），
