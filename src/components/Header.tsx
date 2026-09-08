@@ -206,11 +206,12 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
         </nav>
 
         <div className="flex items-center gap-1 ml-auto">
-          {/* 审核入口（spec10 3.2）：仅管理员态渲染；待审期数 >0 时带 ·N 角标 */}
+          {/* 审核入口（spec10 3.2）：仅管理员态渲染；待审期数 >0 时带 ·N 角标。
+              手机端让位给下方 .m-nav 导航行（顶行宽度不够，见 spec 手机适配） */}
           {admin && (
             <Link
               href="/review"
-              className="text-link text-xs shrink-0 mr-2"
+              className="only-desktop text-link text-xs shrink-0 mr-2"
               aria-label={pendingCount > 0 ? `审核（${pendingCount} 期待审）` : "审核"}
               title={pendingCount > 0 ? `${pendingCount} 期待审` : "审核"}
             >
@@ -220,7 +221,7 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
           {/* 管理入口（spec07 2.3）：低调文字链，访客态点击展开口令输入条，管理员态点击退出管理 */}
           <button
             type="button"
-            className="text-link text-xs shrink-0 mr-2"
+            className="only-desktop text-link text-xs shrink-0 mr-2"
             onClick={() => {
               if (admin) {
                 clearAdminToken();
@@ -268,8 +269,9 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
             </button>
           )}
           {isDaily && issueNo != null && currentDate && (
+            /* 刊号只在 sm+ 显示：手机端顶行放不下（正文题头已有日期），避免整簇被裁掉 */
             <span
-              className="mr-2 text-xs whitespace-nowrap"
+              className="only-desktop mr-2 text-xs whitespace-nowrap"
               style={{ color: "var(--fg-muted)", fontVariantNumeric: "tabular-nums" }}
             >
               第 {issueNo} 期 · {currentDate}
@@ -305,7 +307,7 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
               href="https://daily.juya.uk"
               target="_blank"
               rel="noopener noreferrer"
-              className="icon-btn"
+              className="only-desktop icon-btn"
               aria-label="橘鸦 AI 日报官网"
               title="官网"
             >
@@ -318,6 +320,45 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
           <ThemeToggle />
         </div>
       </div>
+
+      {/* 移动端导航行（<640px 顶行的 .nav-link 三联与审核/管理文字链都放不下）：
+          横滚一行，跨页导航 + 审核·N / 管理入口，激活 2px 墨线（.m-nav-link） */}
+      <nav className="m-nav only-mobile" aria-label="主导航（手机）">
+        {NAV_ITEMS.filter((n) => !n.adminOnly || admin).map((n) => (
+          <Link
+            key={n.key}
+            href={n.href}
+            className={`m-nav-link${active === n.key ? " active" : ""}`}
+            aria-current={active === n.key ? "page" : undefined}
+          >
+            {n.label}
+          </Link>
+        ))}
+        {admin && (
+          <Link
+            href="/review"
+            className={`m-nav-link m-nav-sep${active === "review" ? " active" : ""}`}
+            aria-label={pendingCount > 0 ? `审核（${pendingCount} 期待审）` : "审核"}
+          >
+            {pendingCount > 0 ? `审核·${pendingCount}` : "审核"}
+          </Link>
+        )}
+        <button
+          type="button"
+          className={`m-nav-link${admin ? "" : " m-nav-sep"}`}
+          onClick={() => {
+            if (admin) {
+              clearAdminToken();
+              setAdmin(false);
+            } else {
+              setGateOpen((v) => !v);
+            }
+          }}
+          aria-label={admin ? "退出管理" : "管理"}
+        >
+          {admin ? "退出管理" : "管理"}
+        </button>
+      </nav>
 
       {/* 报头下方全宽搜索条（spec06 B3；spec11 契约 F 联想）：fade-up，Esc 收起，
           输入即联想下拉，Enter 跳选中条目或 /stream?query= */}

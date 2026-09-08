@@ -114,8 +114,11 @@
 /* ══════════════════════════════════════════
    GLOBAL BASE
    ══════════════════════════════════════════ */
-html { scroll-behavior: smooth; overflow-x: hidden; }
-body { background-color: var(--bg); color: var(--fg); font-family: var(--theme-font-body); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+/* overflow-x 用 clip 而非 hidden：hidden 会让 html/body 成为滚动容器——iOS Safari 下窗口滚动失效
+   （scrollY 恒 0、IntersectionObserver 永不触发 → 公司页/事件流滚动加载不动），且 sticky 失效。
+   clip 只裁剪不建滚动容器，语义等价且无副作用。 */
+html { scroll-behavior: smooth; overflow-x: clip; }
+body { background-color: var(--bg); color: var(--fg); font-family: var(--theme-font-body); -webkit-font-smoothing: antialiased; overflow-x: clip; }
 ::selection { background-color: var(--theme-selection-bg); color: var(--theme-selection-fg); }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -155,7 +158,9 @@ body { background-color: var(--bg); color: var(--fg); font-family: var(--theme-f
 /* tooltip 泛化（FRONTEND_DESIGN §4.8）：.seal 之外，任何自带定位上下文的元素
    加 .has-tip + data-tip 即得同款浮层（SVG 内元素不支持 ::after，仍走受控浮层） */
 .seal[data-tip]:hover::after,
-.has-tip[data-tip]:hover::after {
+.seal[data-tip]:active::after,
+.has-tip[data-tip]:hover::after,
+.has-tip[data-tip]:active::after {
   content: attr(data-tip);
   position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
   padding: 3px 8px; border-radius: var(--radius-control);
@@ -224,6 +229,31 @@ mark {
 .nav-link:hover::after { transform: scaleX(1); }
 .nav-link.active { color: var(--fg); font-weight: 600; }
 .nav-link.active::after { transform: scaleX(1); }
+
+/* 响应式显隐开关（<640px 断点）：自带 display 的自定义类（.icon-btn/.m-nav/.facet-chip）会盖过
+   Tailwind 的 hidden/sm:hidden（非分层 CSS 优先于 @layer utilities），故用本组类替代 */
+@media (min-width: 640px) { .only-mobile { display: none !important; } }
+@media (max-width: 639px) { .only-desktop { display: none !important; } }
+
+/* 移动端报头导航行（<640px 时替代隐藏的 .nav-link 三联）：横滚一行，激活 2px 墨线 */
+.m-nav {
+  display: flex; align-items: center; gap: 20px;
+  padding: 0 20px; border-top: 1px solid var(--rule);
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.m-nav::-webkit-scrollbar { display: none; }
+.m-nav-link {
+  position: relative; display: inline-flex; align-items: center;
+  height: 34px; padding: 0 1px; white-space: nowrap;
+  font-size: 13px; letter-spacing: 0.15em; text-decoration: none;
+  color: var(--fg-muted);
+}
+.m-nav-link.active { color: var(--fg); font-weight: 600; }
+.m-nav-link.active::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+  height: 2px; background: var(--fg);
+}
+.m-nav-sep { margin-left: auto; }
 
 /* 图标按钮 — 6px 圆角、hover 纸面加深、按压反馈 */
 .icon-btn {
@@ -329,6 +359,10 @@ mark {
 .facet-group-label { justify-self: center; padding-top: 2px; }
 .facet-group-body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .facet-scroll { max-height: 288px; overflow-y: auto; padding-right: 4px; }
+/* 移动端：筛选面板自身可滚，内层不再限高，避免嵌套滚动 */
+@media (max-width: 639px) {
+  .facet-scroll { max-height: none; overflow: visible; padding-right: 0; }
+}
 
 /* 日期范围输入 — 圆角控件 token，focus 底线 2px accent */
 .facet-input {
@@ -388,6 +422,10 @@ mark {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 1px; background: var(--rule);
   border: 1px solid var(--rule); border-radius: var(--radius-content); overflow: hidden;
+}
+/* 手机端两列：单列 39 家要滚很久，两列仍是索引感 */
+@media (max-width: 480px) {
+  .seal-wall { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .seal-cell {
   display: flex; flex-direction: column; gap: 10px;

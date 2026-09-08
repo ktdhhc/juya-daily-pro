@@ -95,6 +95,8 @@ export function StreamView() {
   const [moreError, setMoreError] = useState("");
   const [companies, setCompanies] = useState<CompanyIndexEntry[]>([]);
   const [companiesError, setCompaniesError] = useState(false);
+  // 手机端筛选面板（<640px 左栏隐藏，改为底部抽屉）：桌面恒 false，不影响既有版式
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // 请求序号：facet 变更与滚动翻页竞争时丢弃过期响应
   const reqSeq = useRef(0);
@@ -184,7 +186,7 @@ export function StreamView() {
     }
   }, [facets, loadingMore, nextBeforeDate, status]);
 
-  // 滚动到底自动翻页（IntersectionObserver）
+  // 滚动到底自动翻页（IntersectionObserver + scroll 兜底）
   const sentinelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = sentinelRef.current;
@@ -196,7 +198,16 @@ export function StreamView() {
       { rootMargin: "600px 0px" }
     );
     io.observe(el);
-    return () => io.disconnect();
+    // 兜底：iOS Safari 下 html/body 若成滚动容器，root=null 的 IO 不触发（视口不动）；
+    // scroll 不冒泡但捕获阶段可达，用哨兵视口坐标判定，两种滚动容器下都成立
+    const onScroll = () => {
+      if (el.getBoundingClientRect().top <= window.innerHeight + 600) void loadMore();
+    };
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    return () => {
+      io.disconnect();
+      window.removeEventListener("scroll", onScroll, { capture: true });
+    };
   }, [loadMore]);
 
   const groups = useMemo(() => groupByDay(items), [items]);
@@ -225,29 +236,46 @@ export function StreamView() {
 
   const clearAll = () => applyFacets(EMPTY_FACETS, true);
 
+  /** 抽屉内筛选：选中公司/分类即收起（单值动作），日期输入保持展开 */
+  const onSheetChange = (patch: Partial<Facets>) => {
+    applyFacets({ ...facets, ...patch }, true);
+    if (!("from" in patch) && !("to" in patch)) setFiltersOpen(false);
+  };
+
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
       {/* 报头搜索词并入 facet 双向同步（spec06 B3）：覆盖式写 query，保留既有 facet，进 URL 可分享 */}
       <Header active="stream" onSearch={(term) => applyFacets({ ...facets, query: term }, true)} />
 
-      {activeChips.length > 0 && (
-        <div className="w-full max-w-6xl mx-auto px-5 pt-4 flex flex-wrap items-center gap-2">
-          {activeChips.map((chip) => (
-            <span key={chip.key} className="facet-chip">
-              {chip.label}
-              <button type="button" className="facet-chip-x" onClick={() => clearFacet(chip.key)} aria-label={`清除筛选 ${chip.label}`}>
-                ×
-              </button>
-            </span>
-          ))}
+      <div className={`w-full max-w-6xl mx-auto px-5 flex flex-wrap items-center gap-2${activeChips.length > 0 ? " pt-4" : " pt-3 sm:pt-0"}`}>
+        {/* 手机端筛选入口（桌面左栏常驻，此按钮 sm+ 隐藏） */}
+        <button
+          type="button"
+          className="facet-chip only-mobile"
+          onClick={() => setFiltersOpen(true)}
+          aria-expanded={filtersOpen}
+          aria-controls="stream-filter-sheet"
+          style={{ cursor: "pointer" }}
+        >
+          筛选{activeChips.length > 0 ? ` · ${activeChips.length}` : ""}
+        </button>
+        {activeChips.map((chip) => (
+          <span key={chip.key} className="facet-chip">
+            {chip.label}
+            <button type="button" className="facet-chip-x" onClick={() => clearFacet(chip.key)} aria-label={`清除筛选 ${chip.label}`}>
+              ×
+            </button>
+          </span>
+        ))}
+        {activeChips.length > 0 && (
           <button type="button" className="text-link text-xs ml-1" onClick={clearAll}>
             清除全部
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="stream-layout flex-1 w-full">
-        <aside className="stream-rail">
+        <aside className="stream-rail hidden sm:block">
           <FacetRail
             facets={facets}
             companies={companies}
@@ -333,6 +361,39 @@ export function StreamView() {
           )}
         </main>
       </div>
+
+      {/* 手机端筛选抽屉（<640px）：底部面板自带滚动，遮罩点击收起；桌面不渲染 */}
+      {filtersOpen && (
+        <div className="fixed inset-0 z-40 sm:hidden" role="dialog" aria-modal="true" aria-label="筛选" id="stream-filter-sheet">
+          <button
+            type="button"
+            className="absolute inset-0 overlay-backdrop"
+            style={{ background: "color-mix(in srgb, var(--fg) 32%, transparent)", border: "none", padding: 0, cursor: "pointer" }}
+            onClick={() => setFiltersOpen(false)}
+            aria-label="关闭筛选"
+          />
+          <div
+            className="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto overlay-panel"
+            style={{ background: "var(--bg)", padding: "12px 20px 20px" }}
+          >
+            <div className="flex items-center justify-between pb-1">
+              <span className="text-sm font-semibold" style={{ color: "var(--fg)" }}>
+                筛选
+              </span>
+              <button type="button" className="text-link text-xs" onClick={() => setFiltersOpen(false)}>
+                完成
+              </button>
+            </div>
+            <FacetRail
+              facets={facets}
+              companies={companies}
+              companiesError={companiesError}
+              onCompaniesRetry={loadCompanies}
+              onChange={onSheetChange}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -172,7 +172,16 @@ export function CompanyProfile({ id }: { id: string }) {
       { rootMargin: "600px 0px" }
     );
     io.observe(el);
-    return () => io.disconnect();
+    // 兜底：iOS Safari 下 html/body 若成滚动容器，root=null 的 IO 不触发（视口不动）；
+    // scroll 不冒泡但捕获阶段可达，用哨兵视口坐标判定，两种滚动容器下都成立
+    const onScroll = () => {
+      if (el.getBoundingClientRect().top <= window.innerHeight + 600) void loadMore();
+    };
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    return () => {
+      io.disconnect();
+      window.removeEventListener("scroll", onScroll, { capture: true });
+    };
   }, [loadMore]);
 
   const distRows = useMemo(() => {
