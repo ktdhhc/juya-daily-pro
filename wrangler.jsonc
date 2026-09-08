@@ -20,7 +20,7 @@
     {
       "binding": "DB",
       "database_name": "juya-daily",
-      "database_id": "REPLACE_WITH_REAL_D1_ID"
+      "database_id": "311f10ee-f6f0-4dc1-b10d-44e8a3ce7ee7"
     }
   ],
   "secrets": {

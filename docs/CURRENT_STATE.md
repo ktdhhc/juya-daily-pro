@@ -14,7 +14,7 @@
 
 ## 当前阶段
 
-**阶段 0-5（v1 本地 MVP）+ spec06-15 全部完成（2026-09-08）**：read API + `POST /api/sync`（暂存写入、stagedDates/stagedItems 权威口径）+ 角色权限基座（口令制访客/管理员）+ 编辑工作流（同步-解析-入库三段，/review 收件台：今日流水线卡/待办 tab/同步运行记录、**解析异步作业化**——parse_state 落 D1、秒回+轮询+刷新恢复+409 双启动守卫+10min 陈旧自愈、四态分组、入库预览、已发布缺主次可重解析）+ LLM 数据整理（role 回填）+ 数据面板 + 阅读时间线 + 搜索联想与高亮 + **部署就绪化**（sync 核心抽取供 cron 复用、定时触发器已启用=北京 08:00-10:30 每半点自动同步+解析但不自动入库、Pages `/api` 同域代理 functions/、脚本 `--remote`、ADMIN_TOKEN 强制）。vitest 373 测试 + 双 typecheck + lint 门禁全绿，静态导出 46 页。**部署日（阶段 6，需用户在场）剩余动作**：Cloudflare 登录 → `wrangler d1 create` 建库并回填 `wrangler.jsonc` 的 `database_id` → 生产 D1 迁移（schema + migrate-staging，--file 为整体事务，见文件头引导）→ `wrangler deploy --secrets-file .prod.secrets`（首部署 secret 先有鸡先有蛋，必须用 secrets-file 一次注入 ADMIN_TOKEN/LLM_API_KEY；该文件已 gitignore）→ Pages 项目部署 + 项目变量 `WORKER_ORIGIN`=Worker 地址（functions/ 代理依赖）→ 首页迁移 read API。生产首轮回填用 `npm run backfill -- --remote`（或 enrich/sync 同款）。
+**✅ 已上线（2026-09-09 部署完成）**：生产 Worker `https://juya-daily-sync.ktdhhc9527.workers.dev`（D1 `juya-daily` id `311f10ee-f6f0-4dc1-b10d-44e8a3ce7ee7`，cron 北京 08:00-10:30 每半点自动同步+解析、不自动入库）；前端 Pages `https://juya-daily.pages.dev`（`functions/` 同域代理 `/api/*`，项目变量 `WORKER_ORIGIN` 已配）；生产数据 83 期 / 1248 条 / 39 家 / 归属率 89.3%；`ADMIN_TOKEN` 与 `LLM_API_KEY` 经 `wrangler deploy --secrets-file .prod.secrets` 注入（无口令访问受守卫端点 403 已实测）。**剩余可选项**：①生产 enrich 补齐归属主次（`npm run enrich -- --remote`，跑完后徽章分主次）②首页迁移 read API（ADR-0013 允许延后，现仍直连 daily.juya.uk）③自定义域名（可选）。日常运维：本地改代码 → `wrangler deploy --secrets-file .prod.secrets`；前端改动 → `npm run build` + `wrangler pages deploy out --project-name juya-daily`。
 
 ## 范围边界
 
