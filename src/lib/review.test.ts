@@ -1,10 +1,19 @@
-// review.ts TDD 测试（spec12 票 02 + spec13 票 02）：categorizePending 三态分组、
-// flowCounts 数据流标头三段计数、shouldPollParse / parsePollStopRefresh 轮询决策纯函数。
+// review.ts TDD 测试（spec12 票 02 + spec13 票 02 + spec14 票 02）：categorizePending 三态分组、
+// 今日流水线卡三段行（flowCardRows）、待办 tab（todoTabs / defaultTodoTab）、
+// 解析作业轮询决策（shouldPollParse / parsePollStopRefresh）纯函数。
 // 覆盖：三态各一例 / missing_owner 归待解析（含 enrichState 未返回的兜底）/ 组序 unparsed→parsed→noNeed；
-// spec13：running/idle/done/failed 四态文案与点标 tone、published>0 过滤、轮询启停与终态补拉。
+// spec14：三段行三态文案与 0 值省略、tab 合并序与默认落点；spec13：轮询启停与终态补拉。
 import { describe, expect, it } from "vitest";
-import { ParseJobStatus, ParseStatePayload, PendingItem, ReviewHistory } from "./api";
-import { categorizePending, flowCounts, parsePollStopRefresh, shouldPollParse } from "./review";
+import { LastParseRecord } from "@/components/review/last-parse";
+import { ParseJobStatus, ParseStatePayload, PendingItem, ReviewHistory, SyncRun } from "./api";
+import {
+  categorizePending,
+  defaultTodoTab,
+  flowCardRows,
+  parsePollStopRefresh,
+  shouldPollParse,
+  todoTabs,
+} from "./review";
 
 /** 造数：只填 id/owners/proposal/enrichState，其余字段给空缺省（形状对齐 src/lib/api.ts PendingItem） */
 function item(partial: Pick<PendingItem, "id"> & Partial<PendingItem>): PendingItem {
@@ -123,60 +132,17 @@ describe("categorizePending（spec12 审核台三态分组）", () => {
   });
 });
 
-// ═══════════ spec13 票 02：数据流标头 + 轮询决策（先红后绿）═══════════
+// ═══════════ spec14 票 02：今日流水线卡三段行（先红后绿）═══════════
 
 /** 造数：ParseStatePayload（spec13 契约 C 形状），缺省零值 */
 function parseState(partial: Partial<ParseStatePayload> & { status: ParseJobStatus }): ParseStatePayload {
   return { startedAt: null, finishedAt: null, processed: 0, total: 0, remaining: 0, errors: [], ...partial };
 }
 
-/** 造数：ReviewHistory 行（flowCounts 只消费 published 统计，其余字段给固定缺省） */
+/** 造数：ReviewHistory 行（③ 行只消费 published 与 date，其余字段给固定缺省） */
 function historyRow(date: string, items: number, published: number): ReviewHistory {
   return { date, status: "ok", error: null, attemptedAt: "2026-08-30 10:00:00", items, published, attributed: 0 };
 }
-
-describe("flowCounts（spec13 数据流标头三段计数）", () => {
-  it("1. running 态：② 段 tone=pulse（呼吸点标），文案「解析 · 运行中 k/M」；① 段暂存计数", () => {
-    const out = flowCounts(3, parseState({ status: "running", processed: 4, total: 12 }), []);
-    expect(out.parse).toEqual({ tone: "pulse", label: "解析 · 运行中 4/12" });
-    expect(out.sync).toEqual({ tone: "ink", label: "已同步 · 暂存 3 条" });
-    expect(out.published).toEqual({ tone: "ink", label: "已入库 · 0 期 0 条" });
-  });
-
-  it("2. idle 与 parse 字段缺失（旧 worker 未交付）同视：② 段「解析 · 空闲」不崩（含 worker 实际交付的计数全 null idle 形状）", () => {
-    expect(flowCounts(0, parseState({ status: "idle" }), []).parse).toEqual({ tone: "ink", label: "解析 · 空闲" });
-    expect(flowCounts(0, parseState({ status: "idle", processed: null, total: null, remaining: null }), []).parse).toEqual({
-      tone: "ink",
-      label: "解析 · 空闲",
-    });
-    expect(flowCounts(0, null, []).parse).toEqual({ tone: "ink", label: "解析 · 空闲" });
-  });
-
-  it("3. done →「解析 · 已完成」（ink）；failed → 朱橙（tone=accent）「解析 · 失败」", () => {
-    expect(flowCounts(0, parseState({ status: "done", processed: 5, total: 5 }), []).parse).toEqual({
-      tone: "ink",
-      label: "解析 · 已完成",
-    });
-    expect(flowCounts(0, parseState({ status: "failed", errors: ["job boom"] }), []).parse).toEqual({
-      tone: "accent",
-      label: "解析 · 失败",
-    });
-  });
-
-  it("4. published 过滤：仅 published>0 的期计入 ③ 段（期数 X、条数 Y=Σpublished）", () => {
-    const history = [
-      historyRow("2026-08-28", 5, 5),
-      historyRow("2026-08-29", 3, 0), // 待审核期不入库计数
-      historyRow("2026-08-30", 2, 2),
-    ];
-    expect(flowCounts(0, null, history).published).toEqual({ tone: "ink", label: "已入库 · 2 期 7 条" });
-  });
-
-  it("5. 边界：running 且 total=0（刚起跑）不显 0/0；暂存数与解析态解耦传入", () => {
-    expect(flowCounts(0, parseState({ status: "running" }), []).parse).toEqual({ tone: "pulse", label: "解析 · 运行中" });
-    expect(flowCounts(2, parseState({ status: "running" }), []).sync).toEqual({ tone: "ink", label: "已同步 · 暂存 2 条" });
-  });
-});
 
 describe("shouldPollParse（spec13 契约 D：是否应轮询）", () => {
   it("仅 running 需要轮询；idle/done/failed 与 parse 字段缺失都不轮询", () => {
@@ -247,5 +213,143 @@ describe("syncToastMessage（同步成功条文案）", () => {
         unchanged: ["2026-08-31", "2026-08-30"],
       })
     ).toBe("同步完成 · 更新 1 期 · 核对 2 期未变化");
+  });
+});
+
+/** 造数：SyncRun 行（spec14 契约 B 形状，字段名对齐工单：startedAt/durationMs/windowDates/...） */
+function syncRun(partial: Partial<SyncRun> & { startedAt: string }): SyncRun {
+  return {
+    durationMs: 12000,
+    windowDates: ["2026-08-30", "2026-08-29", "2026-08-28", "2026-08-27"],
+    added: [],
+    updated: [],
+    unchanged: [],
+    failures: [],
+    stagedItems: 0,
+    ok: true,
+    ...partial,
+  };
+}
+
+describe("flowCardRows（spec14 今日流水线卡三段行文案）", () => {
+  it("1. ① 行有记录：时间 · 窗口 N 期 · 新增/更新/未变化（0 值段省略）· 耗时 s", () => {
+    const out = flowCardRows(
+      syncRun({ startedAt: "2026-08-30T10:30:00.000Z", added: ["2026-08-30"], updated: ["2026-08-29"], unchanged: ["2026-08-28", "2026-08-27"] }),
+      parseState({ status: "idle" }),
+      null,
+      []
+    );
+    expect(out.sync).toEqual({
+      tone: "ink",
+      text: "08-30 10:30 · 窗口 4 期 · 新增 1 · 更新 1 · 未变化 2 · 耗时 12.0s",
+    });
+  });
+
+  it("2. ① 行 0 值段与 0 耗时省略：全未变化只显 窗口/未变化；耗时 <0.1s 不显", () => {
+    const out = flowCardRows(syncRun({ startedAt: "2026-08-30 09:00:00", durationMs: 40, unchanged: ["2026-08-30"] }), null, null, []);
+    expect(out.sync).toEqual({ tone: "ink", text: "08-30 09:00 · 窗口 4 期 · 未变化 1" });
+  });
+
+  it("3. ① 行失败记录：ok=false 朱橙（accent），时间 · 窗口 N 期 · 失败 X + 首条原因", () => {
+    const out = flowCardRows(
+      syncRun({
+        startedAt: "2026-08-30 08:00:00",
+        ok: false,
+        failures: [{ date: "2026-08-30", error: "HTTP 404" }, { date: "2026-08-29", error: "boom" }],
+      }),
+      null,
+      null,
+      []
+    );
+    expect(out.sync).toEqual({ tone: "accent", text: "08-30 08:00 · 窗口 4 期 · 失败 2 · HTTP 404" });
+  });
+
+  it("4. ① 行同步中（syncing=true）：呼吸点标 pulse「同步中…」，优先于任何记录", () => {
+    const out = flowCardRows(syncRun({ startedAt: "2026-08-30 08:00:00" }), null, null, [], true);
+    expect(out.sync).toEqual({ tone: "pulse", text: "同步中…" });
+  });
+
+  it("5. ① 行无记录：无 syncRun 且非同步中 →「尚未同步」（ink）", () => {
+    expect(flowCardRows(null, null, null, []).sync).toEqual({ tone: "ink", text: "尚未同步" });
+  });
+
+  it("6. ② 行 running：pulse「运行中 k/M」；total 未写入（0）不显 0/0", () => {
+    let out = flowCardRows(null, parseState({ status: "running", processed: 4, total: 12 }), null, []);
+    expect(out.parse).toEqual({ tone: "pulse", text: "运行中 4/12" });
+    out = flowCardRows(null, parseState({ status: "running" }), null, []);
+    expect(out.parse).toEqual({ tone: "pulse", text: "运行中" });
+  });
+
+  it("7. ② 行 done：「已完成 · 处理 n/m」+ 完成时间；failed：朱橙「失败」+ errors 首条", () => {
+    let out = flowCardRows(null, parseState({ status: "done", processed: 8, total: 8, finishedAt: "2026-08-30 11:00:00" }), null, []);
+    expect(out.parse).toEqual({ tone: "ink", text: "08-30 11:00 已完成 · 处理 8/8" });
+    out = flowCardRows(null, parseState({ status: "failed", errors: ["20260901-3: LLM 超时"] }), null, []);
+    expect(out.parse).toEqual({ tone: "accent", text: "失败 · 20260901-3 · LLM 超时" });
+  });
+
+  it("8. ② 行 idle：服务端无运行记录时终态缓存兜底（「上次解析 …」）；无缓存 →「空闲」", () => {
+    const cached: LastParseRecord = { at: "08-29 18:00", status: "done", processed: 5, total: 5, remaining: 0, errors: [] };
+    expect(flowCardRows(null, parseState({ status: "idle" }), cached, []).parse).toEqual({
+      tone: "ink",
+      text: "上次解析 08-29 18:00 · 处理 5/5",
+    });
+    expect(flowCardRows(null, parseState({ status: "idle" }), null, []).parse).toEqual({ tone: "ink", text: "空闲" });
+  });
+
+  it("9. ③ 行已入库汇总：published>0 过滤 →「至 <max date> · 共 X 期 Y 条」；空 →「暂无入库」", () => {
+    const history = [historyRow("2026-08-28", 5, 5), historyRow("2026-08-30", 2, 2), historyRow("2026-08-29", 3, 0)];
+    expect(flowCardRows(null, null, null, history).published).toEqual({ tone: "ink", text: "至 2026-08-30 · 共 2 期 7 条" });
+    expect(flowCardRows(null, null, null, []).published).toEqual({ tone: "ink", text: "暂无入库" });
+  });
+});
+
+// ═══════════ spec14 票 02：待办 tab（先红后绿）═══════════
+
+describe("todoTabs（spec14 待办三 tab）", () => {
+  it("1. 待审核 tab = parsed + noNeed 合并（parsed 在前，合并序保持原相对序）；blocked / 异常各自成 tab", () => {
+    const parsedItem = item({
+      id: "20260901-2",
+      owners: [
+        { companyId: "a", name: "A", color: "#111111", role: "primary" },
+        { companyId: "b", name: "B", color: "#222222", role: "partner" },
+      ],
+      proposal: PROPOSAL,
+    });
+    const noNeedItem = item({ id: "20260901-3", owners: [{ companyId: "c", name: "C", color: "#333333", role: null }] });
+    const blockedItem = item({
+      id: "20260902-6",
+      enrichState: "missing_owner",
+      candidate: { id: "runway", name: "Runway", aliases: ["Runway"], confidence: "high", reason: "新闻主角" },
+    });
+    const out = todoTabs({ unparsed: [], blocked: [blockedItem], parsed: [parsedItem, noNeedItem], noNeed: [] }, []);
+    expect(out.map((t) => t.key)).toEqual(["todo", "blocked", "issues"]);
+    expect(out[0].label).toBe("待审核");
+    expect(out[0].count).toBe(2);
+    expect(out[0].items).toEqual([parsedItem, noNeedItem]);
+    expect(out[1].label).toBe("缺候选待入册");
+    expect(out[1].count).toBe(1);
+    expect(out[1].items).toEqual([blockedItem]);
+    expect(out[2].label).toBe("异常");
+    expect(out[2].count).toBe(0);
+    expect(out[2].items).toEqual([]);
+  });
+
+  it("2. 异常 tab 计数 = parse.errors 摘要行数；行文案「itemId · 原因」", () => {
+    const out = todoTabs(
+      { unparsed: [], blocked: [], parsed: [], noNeed: [] },
+      ["20260901-3: LLM 超时", "20260901-7: JSON 解析失败"]
+    );
+    expect(out[2].count).toBe(2);
+    expect(out[2].errors).toEqual([
+      { itemId: "20260901-3", reason: "LLM 超时" },
+      { itemId: "20260901-7", reason: "JSON 解析失败" },
+    ]);
+  });
+
+  it("3. 默认 tab = 第一个 count>0 的 key；全空 → 待审核（todo）", () => {
+    expect(defaultTodoTab([2, 0, 0])).toBe("todo");
+    expect(defaultTodoTab([0, 3, 0])).toBe("blocked");
+    expect(defaultTodoTab([0, 0, 1])).toBe("issues");
+    expect(defaultTodoTab([0, 0, 0])).toBe("todo");
   });
 });

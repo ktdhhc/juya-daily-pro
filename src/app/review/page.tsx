@@ -5,11 +5,11 @@ import { Header } from "@/components/Header";
 import { AdminGate } from "@/components/common/AdminGate";
 import { EmptyState } from "@/components/common/EmptyState";
 import { CandidatePanel } from "@/components/review/CandidatePanel";
-import { FlowHeader } from "@/components/review/FlowHeader";
-import { HistoryPanel } from "@/components/review/HistoryPanel";
-import { LastParseRecord, ParsePanel, loadLastParse, saveLastParse } from "@/components/review/ParsePanel";
+import { FlowCard } from "@/components/review/FlowCard";
+import { LastParseRecord, loadLastParse, saveLastParse } from "@/components/review/last-parse";
 import { PublishBar } from "@/components/review/PublishBar";
 import { StagedIssueList } from "@/components/review/StagedIssueList";
+import { SyncRunsTable } from "@/components/review/SyncRunsTable";
 import {
   ApiError,
   CompanyIndexEntry,
@@ -20,15 +20,18 @@ import {
   PendingPayload,
   PublishOutcome,
   ReviewHistory,
+  SyncRun,
   apiFetch,
   fetchPendingReview,
   fetchReviewHistory,
+  fetchSyncRuns,
   patchReviewItem,
   publishReview,
   triggerParse,
+  triggerSync,
 } from "@/lib/api";
 import { isAdmin } from "@/lib/auth";
-import { categorizePending, flowCounts, parsePollStopRefresh, shouldPollParse } from "@/lib/review";
+import { categorizePending, defaultTodoTab, parsePollStopRefresh, shouldPollParse, todoTabs, TodoTabKey } from "@/lib/review";
 
 type LoadStatus = "loading" | "ready" | "empty" | "error";
 
@@ -56,9 +59,9 @@ function ReviewSkeleton() {
   );
 }
 
-/** 审核台（spec10 票 03 + spec12 票 02 收件箱化 + spec13 票 02 作业化）：进页（访客 AdminGate 原地解锁）
- *  → 数据流标头（同步→解析→入库三段流水线）→ 三态计数状态条 →「运行解析」（秒回启动，轮询推进）→
- *  解析区 → 条目按 待解析/已解析待确认/无需解析 分组 → 候选公司区 → 确认入库 → 同步历史折叠区。 */
+/** 审核台（spec14 票 02 三层重做）：进页（访客 AdminGate 原地解锁）→ 今日流水线卡（三段行 + 三按钮）
+ *  → 待办 tab（待审核 / 缺候选待入册 / 异常，默认落第一个非空）→ 候选公司区 → 确认入库 → 同步运行记录表。
+ *  解析作业轮询机制（spec13 契约 D/F）原样保留；旧 FlowHeader / 页顶状态条 / ParsePanel / HistoryPanel 废弃删除。 */
 export default function ReviewPage() {
   // 管理员态：挂载后读一次 localStorage（静态导出首帧按访客渲染，避免水合错位——同 Header 范式）
   const [admin, setAdmin] = useState(false);
@@ -67,8 +70,14 @@ export default function ReviewPage() {
   const [errMsg, setErrMsg] = useState("");
   // 公司索引（编辑器「新增归属」选源）
   const [companies, setCompanies] = useState<CompanyIndexEntry[]>([]);
-  // 数据流标头③段（spec13 契约 E）：同步历史挂载取一次，published>0 过滤在 flowCounts 内做
+  // 今日卡③行（spec14 契约 C）：入库期数/条数汇总源，published>0 过滤在 flowCardRows 内做
   const [historyRows, setHistoryRows] = useState<ReviewHistory[]>([]);
+  // 今日卡①行 + 同步运行记录表（spec14 契约 B/E）：最新一行与全表同源
+  const [syncRuns, setSyncRuns] = useState<SyncRun[]>([]);
+  // 同步瞬态：running 互斥（Header 同步按钮与今日卡次按钮共用语义）；fail 行内错误（spec14 废弃成功 toast，fail 保留）
+  const [syncing, setSyncing] = useState(false);
+  const [syncErrMsg, setSyncErrMsg] = useState("");
+  const syncingRef = useRef(false);
 
   const applyPending = useCallback((payload: PendingPayload) => {
     setData(payload);
@@ -95,6 +104,13 @@ export default function ReviewPage() {
       .catch(() => {});
   }, [applyPending]);
 
+  /** 运行记录静默重拉（同步完成后今日卡①行与 SyncRunsTable 一并更新） */
+  const refreshSyncRuns = useCallback(() => {
+    fetchSyncRuns(20)
+      .then((r) => setSyncRuns(r.runs))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => setAdmin(isAdmin()), []);
 
   useEffect(() => {
@@ -104,14 +120,16 @@ export default function ReviewPage() {
     apiFetch<{ companies: CompanyIndexEntry[] }>("/api/companies")
       .then((r) => setCompanies(r.companies))
       .catch(() => setCompanies([]));
-    // 数据流标头③段（spec13 契约 E）：入库期数/条数挂载取一次
+    // 今日卡③行（spec14 契约 C）：入库汇总挂载取一次
     fetchReviewHistory(30)
       .then((r) => setHistoryRows(r.history))
       .catch(() => setHistoryRows([]));
-  }, [admin, loadPending]);
+    // 今日卡①行 + 同步运行记录表（spec14 契约 B）
+    refreshSyncRuns();
+  }, [admin, loadPending, refreshSyncRuns]);
 
-  // ── 解析作业状态机（spec13 契约 B/C/D/F）：运行态一律以服务端 data.parse 为准，
-  //    本地只留 POST 瞬态（starting/fail）与 409 提示；localStorage 降级为终态缓存 ──
+  // ── 解析作业状态机（spec13 契约 B/C/D/F 原样保留）：运行态一律以服务端 data.parse 为准，
+  //    本地只留 POST 瞬态（starting/fail）与 409 提示；localStorage 降级为终态缓存（今日卡②行兜底）──
   const parseState: ParseStatePayload | null = data?.parse ?? null;
   const parseStatus = parseState?.status;
   const [postPhase, setPostPhase] = useState<"idle" | "starting" | "fail">("idle");
@@ -182,11 +200,38 @@ export default function ReviewPage() {
     }
   }, [parseState, parseStatus, refreshPending]);
 
-  // 数据流标头跳转（spec13 契约 E）：① 条目区顶部 / ② 解析区 / ③ 发布条；目标未渲染（未加载/未展开）静默。
-  // sticky 报头会遮住落点，预留报头高度。
-  const jumpTo = useCallback((target: "staged" | "parse" | "published") => {
-    const id = target === "staged" ? "review-staged" : target === "parse" ? "review-parse" : "review-publish";
-    const el = document.getElementById(id);
+  // ── 同步（spec14 契约 C/E）：今日卡次按钮 + 失败行就地重试共用；成功静默（今日卡①行常驻显示结果），
+  //    失败行内错误保留 + 重试。运行完成后重拉 pending（暂存计数变化）与运行记录。──
+  const runSync = useCallback(async () => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncing(true);
+    setSyncErrMsg("");
+    try {
+      const res = await triggerSync();
+      if (!res.ok) {
+        const f = res.failures[0];
+        setSyncErrMsg(f ? `${f.date} · ${f.error}` : "同步失败");
+      }
+      refreshPending();
+      refreshSyncRuns();
+    } catch (e) {
+      setSyncErrMsg(
+        e instanceof ApiError
+          ? e.code === "unauthorized"
+            ? "需要管理口令"
+            : e.message
+          : "网络异常，请稍后重试"
+      );
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }, [refreshPending, refreshSyncRuns]);
+
+  // 今日卡主按钮：平滑滚动到待办 tab 区（锚点 #review-todos）；sticky 报头会遮住落点，预留报头高度
+  const jumpToTodos = useCallback(() => {
+    const el = document.getElementById("review-todos");
     if (!el) return;
     const headerH = document.querySelector(".site-header")?.getBoundingClientRect().height ?? 0;
     window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - headerH - 8, behavior: "smooth" });
@@ -231,24 +276,31 @@ export default function ReviewPage() {
     [companies]
   );
 
-  // 确认入库：POST /api/review/publish → 重拉 pending（已发布期消失）
+  // 确认入库：POST /api/review/publish → 重拉 pending（已发布期消失）+ 入库汇总（③行随动）
   const publishDates = useCallback(
     async (dates: string[]): Promise<PublishOutcome> => {
       const res = await publishReview(dates);
       loadPending();
+      fetchReviewHistory(30)
+        .then((r) => setHistoryRows(r.history))
+        .catch(() => {});
       return res;
     },
     [loadPending]
   );
 
-  // 三态分组（spec12 契约 B）：组序 = 待解析 → 已解析待确认 → 无需解析，即渲染序
+  // 三态分组（spec12 契约 B）：供 todoTabs 归并与 PublishBar 复用
   const groups = useMemo(() => categorizePending(data ? data.dates.flatMap((g) => g.items) : []), [data]);
 
-  // 数据流标头三段（spec13 契约 E）：flowCounts 纯函数汇总（30 条同步历史内 published>0 过滤）
-  const flowSegments = useMemo(
-    () => flowCounts(data ? data.dates.reduce((n, g) => n + g.items.length, 0) : 0, parseState, historyRows),
-    [data, parseState, historyRows]
-  );
+  // 待办 tab（spec14 契约 D）：归并 + 默认落点（第一个非空 tab，全空 → 待审核）。
+  // 用户手动切 tab 即记录选择（不做自动跳走）；数据重拉后 tab 计数更新、落点保持用户所在 tab
+  const tabs = useMemo(() => todoTabs(groups, parseState?.errors ?? []), [groups, parseState]);
+  const fallbackKey = useMemo(() => defaultTodoTab([tabs[0].count, tabs[1].count, tabs[2].count]), [tabs]);
+  const [userTabKey, setUserTabKey] = useState<TodoTabKey | null>(null);
+  const activeTabKey = userTabKey && tabs.some((t) => t.key === userTabKey) ? userTabKey : fallbackKey;
+
+  // 今日卡②行 post 瞬态提示（POST 失败灰字 / 409 提示；运行态由服务端 parse 字段表达，不在此重复）
+  const parseHint = postPhase === "fail" ? postErrMsg : busyHint;
 
   return (
     <div className="min-h-dvh flex flex-col pb-24" style={{ background: "var(--bg)" }}>
@@ -267,63 +319,45 @@ export default function ReviewPage() {
         </main>
       ) : (
         <>
-          {/* 工具行：标题 + 运行解析（spec13 契约 F：running 禁用并显进度 k/M） */}
+          {/* 工具行：标题（今日流水线卡自带按钮行，标题行只留名目） */}
           <div className="max-w-6xl mx-auto w-full px-5 pt-4 flex items-center gap-4">
             <h1 className="text-sm font-semibold shrink-0" style={{ color: "var(--fg)" }}>
               审核工作流
             </h1>
-            <button
-              type="button"
-              className="text-link text-xs ml-auto shrink-0"
-              onClick={() => void runParse()}
-              disabled={parseBusy}
-              aria-busy={parseBusy}
-            >
-              {parseBusy
-                ? parseStatus === "running"
-                  ? `解析中 ${parseState?.processed ?? 0}/${parseState?.total ?? 0}…`
-                  : "解析中…"
-                : "运行解析"}
-            </button>
           </div>
 
-          {/* 数据流标头（spec13 契约 E）：同步 → 解析 → 入库三段流水线，点击段落平滑滚动 */}
-          {data && <FlowHeader segments={flowSegments} onJump={jumpTo} />}
+          {/* 今日流水线卡（spec14 契约 C）：三段行 + 按钮行；数据就绪即渲染（无记录显「尚未同步」） */}
+          {data && (
+            <FlowCard
+              latestRun={syncRuns[0] ?? null}
+              syncing={syncing}
+              parse={parseState}
+              lastParse={lastParse}
+              history={historyRows}
+              todoCount={tabs[0].count}
+              onGoTodos={jumpToTodos}
+              onSync={() => void runSync()}
+              onRunParse={() => void runParse()}
+              parseBusy={parseBusy}
+              parseProcessed={parseState?.processed ?? 0}
+              parseTotal={parseState?.total ?? 0}
+              parseHint={parseHint}
+            />
+          )}
 
-          {/* 三态计数状态条（spec12 契约 B）：待解析非空时朱橙提示（收件箱「需处理」语义） */}
-          {status === "ready" && (
-            <div className="rule-t mt-3">
-              <div
-                className="max-w-6xl mx-auto px-5 py-1.5 text-xs flex items-center gap-2 flex-wrap"
-                style={{ color: "var(--fg-muted)", fontVariantNumeric: "tabular-nums" }}
-                role="status"
-              >
-                <span style={{ color: groups.unparsed.length > 0 ? "var(--accent)" : undefined }}>
-                  待解析 {groups.unparsed.length}
+          {/* 同步失败行内错误（spec14 废弃成功 toast；fail 分支保留为行内错误 + 重试） */}
+          {syncErrMsg && (
+            <div className="max-w-6xl mx-auto w-full px-5 mt-2">
+              <div className="rule-t py-1.5 text-xs flex items-center gap-2 min-w-0" style={{ color: "var(--fg-muted)" }} role="alert">
+                <span className="min-w-0 truncate" style={{ color: "var(--accent)" }} title={syncErrMsg}>
+                  {syncErrMsg}
                 </span>
-                {groups.blocked.length > 0 && (
-                  <>
-                    <span aria-hidden>·</span>
-                    <span style={{ color: "var(--accent)" }}>缺候选待入册 {groups.blocked.length}</span>
-                  </>
-                )}
-                <span aria-hidden>·</span>
-                <span>已解析待确认 {groups.parsed.length}</span>
-                <span aria-hidden>·</span>
-                <span>无需解析 {groups.noNeed.length}</span>
+                <button type="button" className="text-link shrink-0" onClick={() => void runSync()} disabled={syncing}>
+                  重试
+                </button>
               </div>
             </div>
           )}
-
-          {/* 解析区（spec12 契约 C + spec13 契约 F）：服务端作业状态驱动——运行进度/完成摘要/失败原因 + 终态缓存兜底 */}
-          <ParsePanel
-            state={parseState}
-            postPhase={postPhase}
-            postErrMsg={postErrMsg}
-            busyHint={busyHint}
-            last={lastParse}
-            onRun={() => void runParse()}
-          />
 
           <main className="flex-1 w-full max-w-6xl mx-auto px-5 py-2">
             {status === "loading" && <ReviewSkeleton />}
@@ -338,11 +372,22 @@ export default function ReviewPage() {
             )}
             {status === "ready" && data && (
               <>
-                <StagedIssueList groups={groups} companies={companies} onPatch={patchItem} />
+                {/* 待办 tab 区（spec14 契约 D）：待审核 / 缺候选待入册 / 异常；锚点 #review-todos */}
+                <StagedIssueList
+                  groups={groups}
+                  parseErrors={parseState?.errors ?? []}
+                  activeKey={activeTabKey}
+                  onTabChange={setUserTabKey}
+                  companies={companies}
+                  onPatch={patchItem}
+                />
                 <CandidatePanel candidates={data.candidates} />
               </>
             )}
-            {(status === "ready" || status === "empty") && <HistoryPanel />}
+            {(status === "ready" || status === "empty") && (
+              /* 同步运行记录表（spec14 契约 E，替代 HistoryPanel）：与今日卡①行同源 */
+              <SyncRunsTable onRetry={() => void runSync()} syncing={syncing} />
+            )}
           </main>
 
           {status === "ready" && data && data.dates.length > 0 && (

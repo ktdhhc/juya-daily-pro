@@ -20,6 +20,7 @@ import {
 } from "../sync/sqlgen";
 import { requireAdmin } from "./auth";
 import { reviewHistory } from "./history";
+import { insertSyncRun, reviewSyncRuns } from "./sync-runs";
 import {
   ApiError,
   reviewPatch,
@@ -182,6 +183,13 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
     if (pathname === "/api/review/history") {
       return await adminMethodRoute(request, env, "GET", async () =>
         jsonOk(await reviewHistory(env, url.searchParams.get("limit")))
+      );
+    }
+    // GET /api/review/sync-runs（spec14 契约 B）：同步运行记录（requireAdmin 同款守卫；不进
+    // withCache——运行记录须实时，与解析审核四端点 / history 同策略）
+    if (pathname === "/api/review/sync-runs") {
+      return await adminMethodRoute(request, env, "GET", async () =>
+        jsonOk(await reviewSyncRuns(env, url.searchParams.get("limit")))
       );
     }
     // GET /api/stats（spec08 Step 2.2）：requireAdmin + withCache 60s 的数据面板聚合
@@ -605,6 +613,10 @@ interface SyncCompanyRow {
 }
 
 async function syncNow(env: Env): Promise<Response> {
+  // spec14 契约 B：函数起点计时（duration_ms 实测口径）与 started_at（ISO now）；
+  // 成功路径响应前落 sync_runs 一行运行记录（异常路径不落——表语义为「运行完成的摘要」）。
+  const startedAt = new Date().toISOString();
+  const startedMs = Date.now();
   try {
     const { archiveUrl, mdBase, lookbackDays } = syncVars(env);
 
@@ -715,6 +727,20 @@ async function syncNow(env: Env): Promise<Response> {
     ).all<{ date: string; cnt: number }>();
     const stagedDates = stagedRows.results.map((r) => r.date);
     const stagedItems = stagedRows.results.reduce((acc, r) => acc + Number(r.cnt), 0);
+
+    // spec14 契约 B：响应成功路径落一行 sync_runs 运行记录（窗口 / 三分类 / 失败 JSON 化，
+    // duration_ms 为函数起止实测，ok = failures.length === 0 → 1/0）
+    await insertSyncRun(env, {
+      startedAt,
+      durationMs: Date.now() - startedMs,
+      windowDates: dates,
+      added,
+      updated,
+      unchanged,
+      failures,
+      stagedItems,
+    });
+
     return jsonOk({
       ok: failures.length === 0,
       dates: synced,

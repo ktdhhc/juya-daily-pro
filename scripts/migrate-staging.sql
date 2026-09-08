@@ -20,6 +20,8 @@
 --   - 已迁移过的库（ALTER 报错 duplicate column name）：整个文件回滚，文件内新增量表不会落库；
 --     需以 --command 幂等引导（与文件内 parse_state 两语句逐字相同，可重复执行）：
 --       npx wrangler d1 execute juya-daily --local --command "CREATE TABLE IF NOT EXISTS parse_state (id INTEGER PRIMARY KEY CHECK (id = 1), status TEXT NOT NULL DEFAULT 'idle' CHECK (status IN ('idle','running','done','failed')), started_at TEXT, finished_at TEXT, processed INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0, remaining INTEGER NOT NULL DEFAULT 0, errors TEXT NOT NULL DEFAULT '[]'); INSERT INTO parse_state (id) VALUES (1) ON CONFLICT(id) DO NOTHING;"
+--     sync_runs（spec14 契约 A，同款幂等引导，可重复执行）：
+--       npx wrangler d1 execute juya-daily --local --command "CREATE TABLE IF NOT EXISTS sync_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT NOT NULL, duration_ms INTEGER, window_dates TEXT NOT NULL, added TEXT NOT NULL DEFAULT '[]', updated TEXT NOT NULL DEFAULT '[]', unchanged TEXT NOT NULL DEFAULT '[]', failures TEXT NOT NULL DEFAULT '[]', staged_items INTEGER NOT NULL DEFAULT 0, ok INTEGER NOT NULL DEFAULT 1);"
 
 ALTER TABLE items ADD COLUMN published INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE sources ADD COLUMN published INTEGER NOT NULL DEFAULT 1;
@@ -63,3 +65,20 @@ CREATE TABLE IF NOT EXISTS parse_state (
 
 -- seed idle 单行：幂等（ON CONFLICT(id) DO NOTHING，重复迁移不覆盖作业真实状态）
 INSERT INTO parse_state (id) VALUES (1) ON CONFLICT(id) DO NOTHING;
+
+-- ─── sync_runs（spec14 契约 A：同步运行记录，每行 = 一次 POST /api/sync 的落地摘要）────────
+-- JSON 文本列（window_dates/added/updated/unchanged/failures）由 worker/api/sync-runs.ts
+-- 序列化与容错解析；ok 为 0/1（failures.length===0 → 1）。表语义为「运行完成的摘要」，
+-- 无 seed 行——前端无记录时显「尚未同步」。
+CREATE TABLE IF NOT EXISTS sync_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  started_at TEXT NOT NULL,
+  duration_ms INTEGER,
+  window_dates TEXT NOT NULL,
+  added TEXT NOT NULL DEFAULT '[]',
+  updated TEXT NOT NULL DEFAULT '[]',
+  unchanged TEXT NOT NULL DEFAULT '[]',
+  failures TEXT NOT NULL DEFAULT '[]',
+  staged_items INTEGER NOT NULL DEFAULT 0,
+  ok INTEGER NOT NULL DEFAULT 1
+);

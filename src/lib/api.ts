@@ -350,6 +350,33 @@ export function fetchReviewHistory(limit = 30): Promise<{ history: ReviewHistory
   return request<{ history: ReviewHistory[] }>(`/api/review/history?${p.toString()}`);
 }
 
+// ══════════════════════════════════════════════════════
+// 同步运行记录（spec14 契约 B）：GET /api/review/sync-runs（requireAdmin，不进缓存）。
+// 一行 = 一次 syncNow 运行的三分类结果（新增/更新/未变化）与失败清单。
+// ══════════════════════════════════════════════════════
+
+/** GET /api/review/sync-runs 行（spec14 契约 B，倒序返回）。
+ *  与 worker assembleSyncRuns 实际交付（SyncRunPayload）对齐：startedAt 可为 null（容错），
+ *  durationMs/各计数恒为数值（null 归一 0）。前端 stampOf/耗时段对 null startedAt 容错。 */
+export interface SyncRun {
+  /** 运行开始时间（ISO 或 UTC naive「YYYY-MM-DD HH:MM:SS」，展示直接截取 MM-DD HH:mm；异常行为 null） */
+  startedAt: string | null;
+  durationMs: number | null; // 容差保留：worker 侧已归一数值，null 仅防御旧行
+  windowDates: string[]; // 本轮窗口期日期数组
+  added: string[]; // 窗口内不在库（新增）
+  updated: string[]; // 在库且内容有变（更新）
+  unchanged: string[]; // 在库且内容相同（未变化）
+  failures: { date: string; error: string }[]; // 失败期（单期容错不阻塞后续期）
+  stagedItems: number; // 本次写入暂存区的条目总数
+  ok: boolean;
+}
+
+/** GET /api/review/sync-runs?limit=N：同步运行记录（今日卡①行与 SyncRunsTable 数据源，spec14 契约 B/E） */
+export function fetchSyncRuns(limit = 20): Promise<{ runs: SyncRun[] }> {
+  const p = new URLSearchParams({ limit: String(limit) });
+  return request<{ runs: SyncRun[] }>(`/api/review/sync-runs?${p.toString()}`);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 import { AdminGate } from "./common/AdminGate";
 import { HighlightText } from "./common/HighlightText";
-import { ApiError, fetchPendingReview, fetchSuggest, syncToastMessage, triggerSync, type SuggestItem } from "@/lib/api";
+import { ApiError, fetchPendingReview, fetchSuggest, triggerSync, type SuggestItem } from "@/lib/api";
 import { clearAdminToken, isAdmin } from "@/lib/auth";
 
 export type HeaderActive = "daily" | "stream" | "company" | "review" | "dashboard";
@@ -128,8 +128,9 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
     };
   }, [admin]);
 
-  // 同步按钮（spec06 B4）：POST /api/sync，运行中旋转，成功细线小条约 15s 自散，失败一行错误 + 重试
-  const [syncPhase, setSyncPhase] = useState<"idle" | "running" | "ok" | "fail">("idle");
+  // 同步按钮（spec06 B4，spec14 调整）：POST /api/sync，运行中旋转；成功静默（/review 今日流水线卡①行
+  // 常驻显示最新运行结果，不再弹 15s toast）；失败一行错误 + 重试保留
+  const [syncPhase, setSyncPhase] = useState<"idle" | "running" | "fail">("idle");
   const [syncMsg, setSyncMsg] = useState("");
   const syncingRef = useRef(false);
 
@@ -140,9 +141,7 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
     try {
       const res = await triggerSync();
       if (res.ok) {
-        // 消息诚实化：新增/更新/核对三分类 + 待审核条数 + 失败期（syncToastMessage 纯函数，review.test 覆盖）
-        setSyncMsg(syncToastMessage(res));
-        setSyncPhase("ok");
+        setSyncPhase("idle"); // 成功静默：结果常驻审核台今日卡，不重复播报（spec14 契约 F）
       } else {
         const f = res.failures[0];
         setSyncMsg(f ? `${f.date} · ${f.error}` : "同步失败");
@@ -161,13 +160,6 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
       syncingRef.current = false;
     }
   }, []);
-
-  // 成功小条约 15s 自散（spec12 契约 A：给「查看审核」跳转留时间）；失败 / 403 提示保留至下次操作（spec06 B4）
-  useEffect(() => {
-    if (syncPhase !== "ok") return;
-    const t = setTimeout(() => setSyncPhase("idle"), 15000);
-    return () => clearTimeout(t);
-  }, [syncPhase]);
 
   const copyLink = async () => {    try {
       await navigator.clipboard.writeText(window.location.href);
@@ -409,21 +401,8 @@ export function Header({ mainRef, currentDate, issueNo, onCalendarToggle, hasEnt
         />
       )}
 
-      {/* 同步状态细线小条（spec06 B4 + spec12 契约 A）：成功约 15s 自散，附「查看审核」文字链；
-          失败一行错误 + 重试文字链；403 提示需要管理口令 */}
-      {syncPhase === "ok" && (
-        <div
-          className="rule-t px-5 py-1.5 text-xs flex items-center gap-2 fade-up"
-          style={{ color: "var(--fg-muted)", fontVariantNumeric: "tabular-nums" }}
-          role="status"
-        >
-          <span aria-hidden style={{ color: "var(--accent)" }}>●</span>
-          <span>{syncMsg}</span>
-          <Link href="/review" className="text-link shrink-0">
-            查看审核
-          </Link>
-        </div>
-      )}
+      {/* 同步失败细线小条（spec06 B4；spec14：成功分支删除——结果常驻 /review 今日流水线卡①行）：
+          一行错误 + 重试文字链；403 提示需要管理口令 */}
       {syncPhase === "fail" && (
         <div className="rule-t px-5 py-1.5 text-xs flex items-center gap-2 fade-up" style={{ color: "var(--fg-muted)" }} role="status">
           <span>{syncMsg}</span>

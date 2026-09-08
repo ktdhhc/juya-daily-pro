@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { CompanyIndexEntry, PatchOwnersBody, PendingItem } from "@/lib/api";
-import { CategorizedPending, isMissingOwner } from "@/lib/review";
+import { CategorizedPending, TodoTab, TodoTabKey, isMissingOwner, todoTabs } from "@/lib/review";
 import { LogoSeal } from "../common/LogoSeal";
 import { ProposalEditor } from "./ProposalEditor";
 
@@ -146,52 +146,103 @@ function ReviewItem({ item, companies, onPatch }: ItemProps) {
 }
 
 interface Props {
-  /** 三态分组（categorizePending 产出，组序即渲染序） */
+  /** 三态分组（categorizePending 产出） */
   groups: CategorizedPending;
+  /** parse.errors（spec13 契约 C）：异常 tab 摘要行来源 */
+  parseErrors: string[];
+  /** 激活 tab（父层持有：数据重拉后由 defaultTodoTab 重算默认落点） */
+  activeKey: TodoTabKey;
+  onTabChange: (key: TodoTabKey) => void;
   companies: CompanyIndexEntry[];
   onPatch: (itemId: string, owners: PatchOwnersBody[]) => Promise<unknown>;
 }
 
-// 四态分组节（spec12 契约 B + 走查补正）：空组不渲染；待解析/缺候选待入册标题朱橙（收件箱「需处理」语义）
-const SECTIONS: { key: keyof CategorizedPending; label: string }[] = [
-  { key: "unparsed", label: "待解析" },
-  { key: "blocked", label: "缺候选待入册" },
-  { key: "parsed", label: "已解析待确认" },
-  { key: "noNeed", label: "无需解析" },
-];
+/** 待办 tab 区（spec14 契约 D，替代四态分组首屏）：tab 头（计数徽章 + 激活墨线）+ 对应面板。
+ *  待审核 tab = parsed + noNeed 合并条目（按日期小节，行沿用 ReviewItem）；
+ *  缺候选 tab 沿用既有行（含候选提示）；异常 tab 只列「itemId · 原因」摘要行（无条目体）。
+ *  根节点挂 id="review-todos"（今日卡主按钮滚动锚点，spec14 契约 C）。 */
+export function StagedIssueList({ groups, parseErrors, activeKey, onTabChange, companies, onPatch }: Props) {
+  const tabs: TodoTab[] = todoTabs(groups, parseErrors);
+  const active = tabs.find((t) => t.key === activeKey) ?? tabs[0];
 
-/** 三态分组条目区（spec12 票 02）：每组标题带计数，组内按日期小节排列，条目行沿用 ReviewItem。
- *  根节点挂 id="review-staged"（数据流标头①段滚动锚点，spec13 契约 E）。 */
-export function StagedIssueList({ groups, companies, onPatch }: Props) {
   return (
-    <div className="fade-up" id="review-staged">
-      {SECTIONS.map(({ key, label }, idx) => {
-        const items = groups[key];
-        if (items.length === 0) return null;
-        // 组内按日期小节（条目无 date 字段，从 id 反解）；同日期保持原序
-        const byDate = new Map<string, PendingItem[]>();
-        for (const it of items) {
-          const d = dateFromItemId(it.id);
-          const list = byDate.get(d) ?? [];
-          list.push(it);
-          byDate.set(d, list);
-        }
-        return (
-          <section key={key} aria-label={`${label}（${items.length} 条）`} className={idx > 0 ? "mt-8" : undefined}>
-            <div className="day-head">
-              <span
-                className="text-sm font-semibold"
-                style={{
-                  color:
-                    key === "unparsed" || key === "blocked" ? "var(--accent)" : "var(--fg)",
-                }}
-              >
-                {label}
+    <div className="fade-up" id="review-todos">
+      {/* tab 头：计数徽章 + 激活 3px 墨线（同 nav-link 语言）；先红后绿 = 序固定 todo → blocked → issues */}
+      <div className="rule-t flex items-center gap-6" role="tablist" aria-label="待办分类">
+        {tabs.map((t) => {
+          const on = t.key === active.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => onTabChange(t.key)}
+              className="relative pt-2 pb-2 text-sm shrink-0"
+              style={{
+                color: on ? "var(--fg)" : "var(--fg-muted)",
+                fontWeight: on ? 600 : 400,
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              <span className="flex items-center gap-1.5">
+                {t.label}
+                {/* 计数徽章：>0 且 todo/blocked 用朱橙（收件箱「需处理」语义），0 灰显 */}
+                <span
+                  className="text-xs px-1.5"
+                  style={{
+                    borderRadius: "var(--radius-control)",
+                    fontVariantNumeric: "tabular-nums",
+                    color: t.count > 0 && t.key !== "issues" ? "var(--accent)" : "var(--fg-muted)",
+                  }}
+                >
+                  {t.count}
+                </span>
               </span>
-              <span className="h-px flex-1" style={{ background: "var(--rule)" }} aria-hidden />
-              <span className="facet-count">{items.length} 条</span>
-            </div>
-            {[...byDate].map(([date, list]) => (
+              {on && (
+                <span
+                  aria-hidden
+                  className="absolute left-0 right-0 bottom-0"
+                  style={{ height: 3, background: "var(--fg)" }}
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 面板：待审核 / 缺候选 = 条目体（按日期小节）；异常 = 摘要行 */}
+      {active.key === "issues" ? (
+        <div role="tabpanel" aria-label={`异常（${active.count} 条）`}>
+          {active.errors.length === 0 ? (
+            <p className="rule-t py-4 text-xs" style={{ color: "var(--fg-muted)" }}>
+              无异常。
+            </p>
+          ) : (
+            active.errors.map((e, i) => (
+              <div key={`${e.itemId}-${i}`} className="rule-t py-2 text-xs flex items-baseline gap-3 min-w-0">
+                <span className="item-no shrink-0" style={{ fontSize: 12 }}>
+                  {e.itemId || "—"}
+                </span>
+                <span className="min-w-0 truncate" style={{ color: "var(--accent)" }} title={e.reason}>
+                  {e.reason}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        <div role="tabpanel" aria-label={`${active.label}（${active.count} 条）`}>
+          {active.items.length === 0 ? (
+            <p className="rule-t py-4 text-xs" style={{ color: "var(--fg-muted)" }}>
+              {active.key === "todo" ? "暂无待审条目。" : "无缺候选条目。"}
+            </p>
+          ) : (
+            // 按日期小节（条目无 date 字段，从 id 反解）；同日期保持原序
+            [...itemsByDate(active.items)].map(([date, list]) => (
               <div key={date}>
                 <div className="text-xs mt-3" style={{ color: "var(--fg-light)" }}>
                   {dayLabel(date)}
@@ -200,10 +251,22 @@ export function StagedIssueList({ groups, companies, onPatch }: Props) {
                   <ReviewItem key={it.id} item={it} companies={companies} onPatch={onPatch} />
                 ))}
               </div>
-            ))}
-          </section>
-        );
-      })}
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+/** 条目按日期小节归并（保持输入序） */
+function itemsByDate(items: PendingItem[]): [string, PendingItem[]][] {
+  const byDate = new Map<string, PendingItem[]>();
+  for (const it of items) {
+    const d = dateFromItemId(it.id);
+    const list = byDate.get(d) ?? [];
+    list.push(it);
+    byDate.set(d, list);
+  }
+  return [...byDate];
 }
