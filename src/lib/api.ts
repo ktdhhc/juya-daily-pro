@@ -300,6 +300,24 @@ export function patchReviewItem(itemId: string, owners: PatchOwnersBody[]): Prom
   });
 }
 
+/** 候选处置状态（spec16 决策 7）：registered=标记已入册（人工入册后回填）、dismissed=忽略 */
+export type CandidateStatus = "registered" | "dismissed";
+
+/** PATCH /api/review/candidate 响应（worker/api/parse.ts CandidatePatchOutcome） */
+export interface CandidatePatchOutcome {
+  id: string;
+  status: CandidateStatus;
+}
+
+/** PATCH /api/review/candidate：把候选标记为已入册 / 忽略（只改候选状态，不触碰 Registry） */
+export function patchReviewCandidate(id: string, status: CandidateStatus): Promise<CandidatePatchOutcome> {
+  return request<CandidatePatchOutcome>("/api/review/candidate", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, status }),
+  });
+}
+
 /** POST /api/review/publish 响应（worker/api/parse.ts PublishOutcome） */
 export interface PublishOutcome {
   publishedDates: string[];

@@ -24,6 +24,7 @@ import { insertSyncRun, reviewSyncRuns } from "./sync-runs";
 import {
   ApiError,
   reviewPatch,
+  reviewPatchCandidate,
   reviewPending,
   reviewPublish,
   startParse,
@@ -171,6 +172,13 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
     if (pathname === "/api/review/item") {
       return await adminMethodRoute(request, env, "PATCH", async () =>
         jsonOk(await reviewPatch(env, await readJsonBody(request)))
+      );
+    }
+    // PATCH /api/review/candidate（spec16 决策 7）：候选状态变更（标记已入册 / 忽略），
+    // 只改 company_candidates.status；非法 status / 不存在的 id → 400，未授权 → 403（同款守卫）
+    if (pathname === "/api/review/candidate") {
+      return await adminMethodRoute(request, env, "PATCH", async () =>
+        jsonOk(await reviewPatchCandidate(env, await readJsonBody(request)))
       );
     }
     if (pathname === "/api/review/publish") {

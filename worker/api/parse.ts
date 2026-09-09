@@ -1,6 +1,7 @@
 // parse — spec10 Step 2.2–2.5：解析与审核 API 的核心逻辑（四端点的纯函数层 + 薄 IO 编排）。
-// 纯函数（selectParseTargets / proposeInsertSql / proposalUpsertSql / validatePatchBody /
-// assemblePending / publishDateStatements / applyProposalStatements）进 vitest
+// 纯函数（selectParseTargets / proposeInsertSql / mergeCandidateReason / proposalUpsertSql /
+// buildUnregisteredCandidateSourcesQuery / itemMentionsCandidateName / validatePatchBody / assemblePending / publishDateStatements /
+// applyProposalStatements）进 vitest
 //（worker/api/parse.test.ts，先红后绿）；LLM 调用与 D1 读写为薄 IO 不单测（ADR-0011），
 // 以 wrangler dev + curl 验收。
 // 契约见 docs/spec/spec10-editorial-workflow.md「解析与审核 API」节（全部 requireAdmin，403 unauthorized）。
@@ -115,6 +116,7 @@ export interface ParseTargets {
 
 // 圈题规则（spec10 2.3；spec11 契约 B 扩展已发布补救类）：
 // - 已有 proposal（item_proposals 命中）→ 幂等跳过（判定最优先）；
+// - 已有待处置（pending）候选（candidateHandledIds）→ 跳过（spec16 决策 4，零命中/多家命中皆然）；
 // - enrich_state='missing_owner' → missingTargets（三分类 propose）；
 // - 多家命中（item_companies ≥2）且无 proposal → enrichTargets（enrich 判 primary）；
 // - 单家命中、非 missing 的零归属 → 跳过。
@@ -147,10 +149,10 @@ export function selectParseTargets(
   const missingTargets: MissingTarget[] = [];
   for (const item of merged) {
     if (proposalItemIds.has(item.id) && !publishedOnly.has(item.id)) continue; // 暂存类已有 proposal：重复 parse 幂等
+    // spec16 决策 4：已有待处置（pending）候选 → 暂停圈题，无论零命中还是多家命中；
+    // 候选被标记已入册/忽略后闸门解除、条目重新可解析（入册后自动改判主导的通道）。
+    if (candidateHandledIds.has(item.id)) continue;
     if (item.enrichState === "missing_owner") {
-      // spec12：缺公司候选已提议（company_candidates.source_item_id 命中）→ 跳过——
-      // 公司未入册前条目恒为 missing_owner，不跳过则每次 parse 重复调 LLM
-      if (candidateHandledIds.has(item.id)) continue;
       missingTargets.push({
         itemId: item.id,
         title: item.title,
@@ -210,6 +212,33 @@ export function buildPublishedMissingRolesQuery(): { sql: string; params: string
   };
 }
 
+// 未入册候选（待处置 / 已忽略）的来源条目查询（spec16 决策 4 + code-review P1，纯构造器）：
+// 待处置 = 等人工入册，重判无意义；已忽略 = 用户已表态不入册，重判只会再烧 LLM。
+// 只有 status='registered'（公司已入册）才解除闸门，条目重新可解析（入册后自动改判主导的通道）。
+// 调用方按 MAX_BOUND_PARAMS 分块传入 itemIds。
+export function buildUnregisteredCandidateSourcesQuery(itemIds: string[]): { sql: string; params: string[] } {
+  const placeholders = itemIds.map(() => "?").join(",");
+  return {
+    sql:
+      "SELECT source_item_id FROM company_candidates" +
+      ` WHERE status IN ('pending','dismissed') AND source_item_id IN (${placeholders})`,
+    params: [...itemIds],
+  };
+}
+
+// 条目标题/正文是否提到某个未入册候选的公司名（大小写不敏感）——同一家缺公司被多条提及时，
+// 非来源条目同样要暂停圈题（候选表按公司聚合，只留一个 source_item_id，光靠它盖不住）。
+export function itemMentionsCandidateName(
+  item: { title: string; bodyMd: string },
+  candidateNames: readonly string[],
+): boolean {
+  const hay = `${item.title}\n${item.bodyMd}`.toLowerCase();
+  return candidateNames.some((n) => {
+    const name = n.trim().toLowerCase();
+    return name !== "" && hay.includes(name);
+  });
+}
+
 // ---------- SQL 生成纯函数（company_candidates / item_proposals，spec10 Step 2.3） ----------
 
 export interface ProposalUpsertRow {
@@ -240,7 +269,9 @@ export interface CandidateInsertRow {
   sourceItemId: string;
 }
 
-// company_candidates INSERT：ON CONFLICT(id) DO NOTHING——已有同名建议不覆盖（spec10 2.3 冲突策略）。
+// company_candidates INSERT：ON CONFLICT(id) DO UPDATE SET reason——同公司再次被提议时合并证据
+//（spec16 决策 5；reason 为调用方用 mergeCandidateReason 算好的合并值）。name/aliases/confidence/
+// source_item_id 保留既有值（首个来源作溯源），status 不入列 → 已 dismissed/registered 不被改回 pending。
 // status 不写列（落表默认 'pending'），created_at 走默认 datetime('now')。
 export function proposeInsertSql(rows: CandidateInsertRow[]): string {
   if (rows.length === 0) return "";
@@ -252,8 +283,25 @@ export function proposeInsertSql(rows: CandidateInsertRow[]): string {
   return (
     "INSERT INTO company_candidates (id, name, aliases, confidence, reason, source_item_id) " +
     `VALUES ${values.join(", ")} ` +
-    "ON CONFLICT(id) DO NOTHING;"
+    "ON CONFLICT(id) DO UPDATE SET reason = excluded.reason;"
   );
+}
+
+// 候选证据合并（spec16 决策 5）：`；` 分隔、去重（保留首次出现）、上限 5 段、既有段序在前。
+// 与 scripts/propose-companies.ts 同款语义（该脚本上限 3，本 spec 定为 5）；段内空白折叠为单行。
+const CANDIDATE_REASON_SEP = "；";
+const CANDIDATE_REASON_MAX = 5;
+
+export function mergeCandidateReason(existing: string, incoming: string): string {
+  const segments: string[] = [];
+  const parts = [...existing.split(CANDIDATE_REASON_SEP), ...incoming.split(CANDIDATE_REASON_SEP)];
+  for (const part of parts) {
+    if (segments.length >= CANDIDATE_REASON_MAX) break;
+    const seg = part.replace(/\s+/g, " ").trim();
+    if (seg === "" || segments.includes(seg)) continue;
+    segments.push(seg);
+  }
+  return segments.join(CANDIDATE_REASON_SEP);
 }
 
 // confidence 三档启发，与 scripts/propose-companies.ts confidenceOf 同规则
@@ -314,6 +362,38 @@ export function validatePatchBody(body: unknown): PatchValidation {
     return { ok: false, message: "primary 至多 1 个" };
   }
   return { ok: true, itemId, owners };
+}
+
+// ---------- 候选状态校验与 SQL 生成纯函数（spec16 决策 7，PATCH /api/review/candidate） ----------
+
+export type CandidateStatus = "registered" | "dismissed";
+export type CandidatePatchValidation =
+  | { ok: true; id: string; status: CandidateStatus }
+  | { ok: false; message: string };
+
+const CANDIDATE_STATUSES: ReadonlySet<string> = new Set(["registered", "dismissed"]);
+
+// body { id, status }：id 非空字符串、status ∈ registered/dismissed。
+export function validateCandidatePatchBody(body: unknown): CandidatePatchValidation {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { ok: false, message: "body 须为对象" };
+  }
+  const record = body as Record<string, unknown>;
+  const id = record.id;
+  if (typeof id !== "string" || id.trim() === "") {
+    return { ok: false, message: "id 须为非空字符串" };
+  }
+  const status = record.status;
+  if (typeof status !== "string" || !CANDIDATE_STATUSES.has(status)) {
+    return { ok: false, message: "status 须为 registered/dismissed" };
+  }
+  return { ok: true, id, status: status as CandidateStatus };
+}
+
+// 候选状态 UPDATE（单语句单行）：只改 company_candidates.status——不触碰 Registry，
+// 不改 name/aliases/confidence/reason/source_item_id（spec16 决策 7）。
+export function candidateStatusSql(id: string, status: CandidateStatus): string {
+  return `UPDATE company_candidates SET status = ${quote(status)} WHERE id = ${quote(id)};`;
 }
 
 // ---------- pending 组装纯函数（GET /api/review/pending，spec10 契约） ----------
@@ -620,7 +700,7 @@ export async function collectParseContext(env: ParseEnv): Promise<ParseJobContex
     }
   }
 
-  // 3) 已有 proposal（幂等圈题依据）+ 已提议候选的 missing 条目（spec12 跳过闸门）
+  // 3) 已有 proposal（幂等圈题依据）+ 未入册候选的条目（spec16 决策 4 跳过闸门）
   const proposalItemIds = new Set<string>();
   for (const chunk of chunkArray(itemIds, MAX_BOUND_PARAMS)) {
     const placeholders = chunk.map(() => "?").join(",");
@@ -634,13 +714,23 @@ export async function collectParseContext(env: ParseEnv): Promise<ParseJobContex
   const candidateHandledIds = new Set<string>();
   if (itemIds.length > 0) {
     for (const chunk of chunkArray(itemIds, MAX_BOUND_PARAMS)) {
-      const placeholders = chunk.map(() => "?").join(",");
-      const rows = await env.DB.prepare(
-        `SELECT source_item_id FROM company_candidates WHERE source_item_id IN (${placeholders})`,
-      )
-        .bind(...chunk)
-        .all<{ source_item_id: string }>();
+      const q = buildUnregisteredCandidateSourcesQuery(chunk);
+      const rows = await env.DB.prepare(q.sql).bind(...q.params).all<{ source_item_id: string }>();
       for (const r of rows.results) candidateHandledIds.add(r.source_item_id);
+    }
+  }
+  // 名称兜底（code-review P1）：候选按公司聚合只留一个 source_item_id，同一家缺公司被多条提及时，
+  // 其余条目按"文本提到该候选公司名"同样暂停圈题（否则每轮重复 enrich+propose 两跳 LLM）。
+  if (itemIds.length > 0) {
+    const nameRows = await env.DB.prepare(
+      "SELECT name FROM company_candidates WHERE status IN ('pending','dismissed')",
+    ).all<{ name: string }>();
+    const unregisteredNames = nameRows.results.map((r) => r.name);
+    if (unregisteredNames.length > 0) {
+      for (const it of items) {
+        if (candidateHandledIds.has(it.id)) continue;
+        if (itemMentionsCandidateName(it, unregisteredNames)) candidateHandledIds.add(it.id);
+      }
     }
   }
 
@@ -693,6 +783,37 @@ export async function executeParse(
     | { ok: false; error: string };
   const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
+  // 单条条目 → propose 三分类 → company 候选行（零命中 missing_owner 与 spec16 无主导缺口共用）。
+  // 复用 buildProposePrompt / parseProposeResponse，不新增 prompt 资产；product/ignore 仅计数不落库。
+  const runPropose = async (
+    item: { title: string; summary: string; bodyMd: string },
+    itemId: string,
+  ): Promise<JobOutcome> => {
+    try {
+      const prompt = buildProposePrompt(item, context.registryNames);
+      const raw = await chatJson(cfg, prompt.system, prompt.user);
+      const verdict = parseProposeResponse(raw, context.registryNames);
+      if (verdict === null) {
+        return { ok: false, error: `${itemId}: propose 响应不合法（前 120 字符）：${raw.slice(0, 120)}` };
+      }
+      if (verdict.kind !== "company") return { ok: true }; // product/ignore 仅计数
+      const evidence = verdict.evidence.replace(/\s+/g, " ").trim();
+      return {
+        ok: true,
+        candidate: {
+          id: verdict.id,
+          name: verdict.name,
+          aliases: verdict.aliases,
+          confidence: confidenceOf(verdict.name, verdict.aliases, evidence),
+          reason: evidence,
+          sourceItemId: itemId,
+        },
+      };
+    } catch (err) {
+      return { ok: false, error: `${itemId}: ${errorMessage(err)}` };
+    }
+  };
+
   // 单条目标 → 作业函数（enrich / propose 两分支，原 runParse 闭包原样迁入）
   const jobOf = (c: CappedJob): (() => Promise<JobOutcome>) =>
     c.kind === "enrich"
@@ -709,6 +830,11 @@ export async function executeParse(
             if (parsed === null) {
               return { ok: false, error: `${c.target.itemId}: enrich 响应不合法（前 120 字符）：${raw.slice(0, 120)}` };
             }
+            if (parsed.primaryId === null) {
+              // spec16：合法无主导（候选清单里没有主角）→ 不落归属建议、角色全留空；
+              // 同轮再跑一次 propose 把"缺的那家公司"落进候选名单（company → 候选；product/ignore → 仅计数）
+              return await runPropose(item, c.target.itemId);
+            }
             const verdicts = deriveRoles(item, c.target.candidates, parsed.primaryId, parsed.reason);
             return {
               ok: true,
@@ -722,31 +848,7 @@ export async function executeParse(
             return { ok: false, error: `${c.target.itemId}: ${errorMessage(err)}` };
           }
         }
-      : async () => {
-          try {
-            const prompt = buildProposePrompt(c.target, context.registryNames);
-            const raw = await chatJson(cfg, prompt.system, prompt.user);
-            const verdict = parseProposeResponse(raw, context.registryNames);
-            if (verdict === null) {
-              return { ok: false, error: `${c.target.itemId}: propose 响应不合法（前 120 字符）：${raw.slice(0, 120)}` };
-            }
-            if (verdict.kind !== "company") return { ok: true }; // product/ignore 仅计数
-            const evidence = verdict.evidence.replace(/\s+/g, " ").trim();
-            return {
-              ok: true,
-              candidate: {
-                id: verdict.id,
-                name: verdict.name,
-                aliases: verdict.aliases,
-                confidence: confidenceOf(verdict.name, verdict.aliases, evidence),
-                reason: evidence,
-                sourceItemId: c.target.itemId,
-              },
-            };
-          } catch (err) {
-            return { ok: false, error: `${c.target.itemId}: ${errorMessage(err)}` };
-          }
-        };
+      : () => runPropose(c.target, c.target.itemId);
 
   // 逐条完成记账：processed 仅计成功、errors 收失败清单；每条完成即回调 onProgress（spec13）
   let processed = 0;
@@ -768,14 +870,36 @@ export async function executeParse(
     maxLlm,
   );
 
-  // 6) D1 batch 写入（proposal upsert + 候选 DO NOTHING；空则无语句）。
+  // 6) D1 batch 写入（proposal upsert + 候选证据合并；空则无语句）。
+  //    候选冲突策略（spec16 决策 5）：同公司再次被提议 → reason 合并去重（既有段在前、上限 5 段），
+  //    name/aliases/confidence/source_item_id 保留首个提议值，status 不动（dismissed/registered 不被改回）。
   //    已发布条目的 proposal 立即应用（spec11 契约 B）：applyProposalStatements 直接改写
   //    item_companies role + enrich_cache——条目已在库，无后续 publish 节点可依赖。
   const proposalRows = results.flatMap((r) => (r.ok && r.proposal !== undefined ? [r.proposal] : []));
   const candidateRows = results.flatMap((r) => (r.ok && r.candidate !== undefined ? [r.candidate] : []));
   const deduped = new Map<string, CandidateInsertRow>();
   for (const c of candidateRows) {
-    if (!deduped.has(c.id)) deduped.set(c.id, c); // 同轮同 id 候选去重（SQL 侧 DO NOTHING 兜底）
+    const prev = deduped.get(c.id); // 同轮同 id 候选：证据合并（首个 name/aliases/confidence/来源保留）
+    deduped.set(
+      c.id,
+      prev === undefined ? c : { ...prev, reason: mergeCandidateReason(prev.reason, c.reason) },
+    );
+  }
+  if (deduped.size > 0) {
+    for (const chunk of chunkArray([...deduped.keys()], MAX_BOUND_PARAMS)) {
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = await env.DB.prepare(
+        `SELECT id, reason FROM company_candidates WHERE id IN (${placeholders})`,
+      )
+        .bind(...chunk)
+        .all<{ id: string; reason: string }>();
+      for (const r of rows.results) {
+        const row = deduped.get(r.id);
+        if (row !== undefined) {
+          deduped.set(r.id, { ...row, reason: mergeCandidateReason(r.reason, row.reason) });
+        }
+      }
+    }
   }
   const statements = [proposalUpsertSql(proposalRows), proposeInsertSql([...deduped.values()])].filter(
     (s) => s !== "",
@@ -1008,6 +1132,31 @@ export async function reviewPatch(env: ParseEnv, body: unknown): Promise<PatchOu
 
   await env.DB.batch(patchStatements(v.itemId, v.owners).map((s) => env.DB.prepare(s)));
   return { itemId: v.itemId, owners: v.owners.length };
+}
+
+// ---------- 薄 IO：PATCH /api/review/candidate（spec16 决策 7） ----------
+
+export interface CandidatePatchOutcome {
+  id: string;
+  status: CandidateStatus;
+}
+
+// 候选状态变更（标记已入册 / 忽略）：校验 → 存在性检查（不存在的 id → 400）→ 单语句 UPDATE。
+// 只改 company_candidates.status；入册唯一通道仍是人工编辑 companies.yaml（ADR-0001 不变）。
+export async function reviewPatchCandidate(
+  env: ParseEnv,
+  body: unknown,
+): Promise<CandidatePatchOutcome> {
+  const v = validateCandidatePatchBody(body);
+  if (!v.ok) throw new ApiError(400, "invalid_param", v.message);
+
+  const row = await env.DB.prepare("SELECT id FROM company_candidates WHERE id = ?")
+    .bind(v.id)
+    .first<{ id: string }>();
+  if (row === null) throw new ApiError(400, "invalid_param", `候选不存在：${v.id}`);
+
+  await env.DB.prepare(candidateStatusSql(v.id, v.status)).run();
+  return { id: v.id, status: v.status };
 }
 
 // ---------- 薄 IO：POST /api/review/publish ----------

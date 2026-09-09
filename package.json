@@ -17,7 +17,8 @@
     "match:all": "tsx scripts/match-all.ts",
     "enrich": "tsx scripts/enrich.ts",
     "propose:companies": "tsx scripts/propose-companies.ts",
-    "sync": "tsx scripts/sync.ts"
+    "sync": "tsx scripts/sync.ts",
+    "registry:apply": "tsx scripts/registry-apply.ts"
   },
   "keywords": [],
   "author": "",

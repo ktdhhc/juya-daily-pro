@@ -28,10 +28,11 @@ export function isMissingOwner(item: PendingItem): boolean {
  *  1. 待解析 = owners≥2 且无 proposal，或 missing_owner
  *  2. 已解析待确认 = owners≥2 且有 proposal
  *  3. 无需解析 = 其余（单家归属等） */
-/** 四态分组（spec12 契约 B + 走查补正，组序即渲染序）：
- *  1. 待解析 = owners≥2 且无 proposal，或 missing_owner 且候选未提议（机器可跑）
- *  2. 缺候选待入册 = missing_owner 且候选已提议（等人工入册，20260902-6/-14 实测）
- *  3. 已解析待确认 = owners≥2 且有 proposal
+/** 四态分组（spec12 契约 B + 走查补正 + spec16 决策 6，组序即渲染序）：
+ *  1. 待解析 = owners≥2 且无 proposal 且无待处置候选，或 missing_owner 且候选未提议（机器可跑）
+ *  2. 缺候选待入册 = missing_owner 且候选已提议（等人工入册，20260902-6/-14 实测），
+ *     或 owners≥2 且存在待处置候选（spec16：多家命中但主角缺席，等候选处置后才能改判主导）
+ *  3. 已解析待确认 = owners≥2 且有 proposal（proposal 优先于候选）
  *  4. 无需解析 = 其余（单家归属等） */
 export function categorizePending(items: PendingItem[]): CategorizedPending {
   const out: CategorizedPending = { unparsed: [], blocked: [], parsed: [], noNeed: [] };
@@ -39,7 +40,8 @@ export function categorizePending(items: PendingItem[]): CategorizedPending {
     if (isMissingOwner(it)) {
       (it.candidate !== null ? out.blocked : out.unparsed).push(it);
     } else if (it.owners.length >= 2) {
-      (it.proposal !== null ? out.parsed : out.unparsed).push(it);
+      if (it.proposal !== null) out.parsed.push(it);
+      else (it.candidate !== null ? out.blocked : out.unparsed).push(it);
     } else {
       out.noNeed.push(it);
     }

@@ -32,6 +32,10 @@ _Avoid_: vendor、org、主体、机构
 本项目维护的"当前活跃的科技与 AI 公司"白名单，是 Item 公司归属的唯一闸门：只有登记在册的 Company 才会被标到 Item 上。可由 LLM 提议新增候选，最终入册需人工确认。
 _Avoid_: 公司列表、white list、entity table
 
+**Company Candidate**（编辑口中的"临时名单"）:
+LLM 在解析段提议、尚未入册的 Company。来源两类：零命中条目（条目主体公司不在 Registry）与"主角缺席"条目（命中的都是顺带提及的公司，见 ADR-0017）。按公司聚合、证据累积；编辑攒够证据后人工写入 `data/companies.yaml` 入册，随后 `npm run registry:apply` 重匹配并把候选标记为已入册。候选永不自动入册。
+_Avoid_: 待审公司、备选名单、白名单候选
+
 **Role**:
 Item 上每个 Company 的参与身份：`primary`（事件主导方/发布方）、`partner`（合作方/共同参与方）、`subject`（被报道对象，非主动方）。单 Company 归属时无需 Role；多 Company 归属时每家各带一个 Role。v1 阶段多 Company 归属暂不区分 Role（并列渲染，role 均为空），Role 由部署日后的 LLM enrich 回填启用（ADR-0014）。
 _Avoid_: 角色、参与类型

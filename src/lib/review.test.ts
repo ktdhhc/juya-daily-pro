@@ -130,6 +130,31 @@ describe("categorizePending（spec12 审核台三态分组）", () => {
     expect(out.blocked).toEqual([blockedItem]);
     expect(out.unparsed).toEqual([unparsedMissing]);
   });
+
+  it("7. 多家命中且存在待处置候选 → blocked（spec16 决策 6）；有 proposal 的仍归 parsed", () => {
+    const multiBlocked = item({
+      id: "20260903-2",
+      owners: [
+        { companyId: "a", name: "A", color: "#111111", role: null },
+        { companyId: "b", name: "B", color: "#222222", role: null },
+      ],
+      candidate: { id: "inception", name: "Inception Labs", aliases: [], confidence: "high", reason: "主角；融资" },
+    });
+    const multiParsed = item({
+      id: "20260903-3",
+      owners: [
+        { companyId: "a", name: "A", color: "#111111", role: "primary" },
+        { companyId: "b", name: "B", color: "#222222", role: "partner" },
+      ],
+      proposal: PROPOSAL,
+      candidate: { id: "inception", name: "Inception Labs", aliases: [], confidence: "high", reason: "主角" },
+    });
+    const out = categorizePending([multiBlocked, multiParsed]);
+    expect(out.blocked).toEqual([multiBlocked]);
+    expect(out.parsed).toEqual([multiParsed]);
+    expect(out.unparsed).toEqual([]);
+    expect(out.noNeed).toEqual([]);
+  });
 });
 
 // ═══════════ spec14 票 02：今日流水线卡三段行（先红后绿）═══════════

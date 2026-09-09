@@ -68,7 +68,8 @@ export const ENRICH_SYSTEM_PROMPT =
   "你是中文 AI 行业的资深编辑，负责判断一条新闻条目的主导公司。" +
   "只输出一个 JSON 对象，禁止输出任何解释、前后缀或多余文本。" +
   '输出格式：{"primary_company_id": "<候选 id>", "reason": "<一句中文裁决理由>"}，' +
-  "primary_company_id 必须从候选清单的 id 中选择。";
+  "primary_company_id 必须从候选清单的 id 中选择；" +
+  "若条目主体公司不在候选清单中，primary_company_id 返回 null（reason 仍必填）。";
 
 export function buildEnrichPrompt(
   item: EnrichItem,
@@ -91,19 +92,22 @@ export function buildEnrichPrompt(
     `正文：\n${body}\n\n` +
     `## 候选公司（附命中别名证据）\n${candidateLines}\n\n` +
     `## 任务\n` +
-    `上述条目的主导公司是哪一家？（被对比、被连接、被顺带提及的候选不是主导。）` +
-    `从候选中选一个，只输出 JSON：{"primary_company_id": "候选 id", "reason": "一句中文裁决理由"}`;
+    `上述条目的主导公司是哪一家？（被对比、被连接、被顺带提及的候选不是主导；` +
+    `主体公司不在候选清单时 primary_company_id 返回 null。）` +
+    `只输出 JSON：{"primary_company_id": "候选 id 或 null", "reason": "一句中文裁决理由"}`;
   return { system: ENRICH_SYSTEM_PROMPT, user };
 }
 
 // ---------- parseEnrichResponse ----------
 
-// 剥 ```json 围栏（可有可无，须成对闭合）→ JSON.parse → 校验 primary ∈ candidateIds 且
-// reason 为非空字符串 → 返回；任何不合法（非法 JSON / 幻觉 id / 缺字段 / 围栏残缺）→ null。
+// 剥 ```json 围栏（可有可无，须成对闭合）→ JSON.parse → 校验 reason 为非空字符串、primary 为
+// 候选 id 或 null → 返回；任何不合法（非法 JSON / 幻觉 id / 缺 reason / primary 非字符串非 null /
+// 围栏残缺）→ null。两条路径可区分（spec16 决策 1）：合法无主导 → { primaryId: null, reason }，
+// 解析失败 → null。
 export function parseEnrichResponse(
   raw: string,
   candidateIds: string[],
-): { primaryId: string; reason: string } | null {
+): { primaryId: string | null; reason: string } | null {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(raw);
   const text = fenced ? fenced[1] : raw;
   let parsed: unknown;
@@ -116,9 +120,10 @@ export function parseEnrichResponse(
   const record = parsed as Record<string, unknown>;
   const primary = record.primary_company_id;
   const reason = record.reason;
-  if (typeof primary !== "string" || typeof reason !== "string") return null; // 缺字段 / 类型不对
+  if (typeof reason !== "string" || reason.trim() === "") return null; // 缺 reason / 空串 / 纯空白
+  if (primary === null) return { primaryId: null, reason }; // 合法无主导：候选清单里没有主角
+  if (typeof primary !== "string") return null; // 缺字段 / 类型不对
   if (!candidateIds.includes(primary)) return null; // 幻觉 id
-  if (reason.trim() === "") return null; // reason 空串 / 纯空白
   return { primaryId: primary, reason };
 }
 

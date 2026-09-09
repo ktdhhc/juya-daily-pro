@@ -25,7 +25,7 @@
 
 ```text
 - 后端：Cloudflare Worker——read API（published=1）+ POST /api/sync（暂存）+ POST /api/parse（LLM 解析段）
-  + /api/review/*（pending/item/publish）+ /api/admin/ping + /api/stats；requireAdmin 守卫统一 ADMIN_TOKEN
+  + /api/review/*（pending/item/publish/candidate）+ /api/admin/ping + /api/stats；requireAdmin 守卫统一 ADMIN_TOKEN
 - 前端：Next.js 16 (App Router, output export)；本地 next dev + wrangler dev，部署日 Pages 静态托管
 - 持久化：D1（items/sources 带 published 列；companies/item_companies（含 role）/enrich_cache/sync_log/item_proposals/company_candidates）——唯一存储
 - LLM：Worker 解析段（/api/parse，MAX_LLM_PER_RUN 限流；已发布缺主次条目可重解析=失败补救通道）与离线脚本（npm run enrich）共用 src/lib/llm/* 纯函数；wrangler.jsonc 的 LLM_API_BASE/LLM_MODEL 必须与实际供应商一致（0830 曾因占位值打错端点 401）
@@ -37,7 +37,7 @@
 1. **编辑工作流（ADR-0015 + ADR-0016）**：`POST /api/sync` 或同步按钮 → 新数据 **published=0 暂存**（访客不可见，同步段零 LLM；响应含 stagedDates）→ 解析（`POST /api/parse` 对暂存条目 LLM 裁决：多家命中判 primary + deriveRoles 补 partner/subject；missing_owner 三分类出候选公司）→ 入库 `POST /api/review/publish`（原子发布：published 0→1 + 应用 proposal + 写 enrich_cache）。upsert 的 DO UPDATE 一律**不含 published**（重同步不翻转状态）。**两条链路**：①**定时链路自动**——cron 同步无失败且本轮有暂存期时，解析跑完按终态自动入库（`worker/sync/index.ts` scheduled + `autoPublishDates` 纯函数）；异常（同步失败 / 解析失败 / 整轮零成功 / 解析进行中）一律**不入库**，暂存留人工，下一轮 cron 自愈；②**手动链路恒人工**——同步按钮/接口只写暂存，/review 逐条检查/编辑（PATCH item 重写归属）后「确认入库」；审核台从每日必经降级为抽查 + 异常补救入口。日报页 `/` 直连 daily.juya.uk，始终最新。
 2. **前端取数**：全部视图走相对路径 `/api/*`（dev 由 next.config rewrites 代理到 wrangler dev :8787）；首页 `/` 仍直连 daily.juya.uk（部署日迁移，ADR-0013）。fetch 统一走 `src/lib/api.ts` 的 apiFetch（本地存有管理口令时自动附 `x-admin-token`）。
 3. **手机端适配（<640px 断点）**：报头拆两行——顶行品牌 + 图标（搜索/同步/合订本/复制/主题），第二行 `.m-nav` 横滚导航（日报/事件流/公司/面板 + 审核/管理），桌面端 `.nav-link` 三联不变；`/stream` 左栏在手机端改底部抽屉（`筛选` 按钮 → `#stream-filter-sheet`，选公司/分类即收起）；公司索引手机端两列；`html/body` 横向裁剪用 `overflow-x: clip`（**不可改回 hidden**：hidden 会让 html/body 成滚动容器，iOS 下窗口滚动失效、root=null 的 IntersectionObserver 永不触发 → 公司页/事件流滚动加载不动、sticky 失效）；滚动加载另有 capture 阶段 scroll 兜底（哨兵视口坐标判定）。Tailwind `hidden`/`sm:hidden` 会被非分层的自定义类（`.icon-btn`/`.m-nav`/`.facet-chip`）盖过，响应式显隐用 `.only-mobile`/`.only-desktop`。
-4. **白名单闸门**：`data/companies.yaml` 唯一真相源，sync 幂等 upsert D1 companies。候选公司只进 company_candidates 表/companies-pending.yaml，**入册唯一通道是人工改 yaml + `npm run gen:registry`**（Worker 不写 repo 文件）。
+4. **白名单闸门**：`data/companies.yaml` 唯一真相源，sync 幂等 upsert D1 companies。候选公司（Company Candidate = 编辑口中的临时名单）只进 company_candidates 表/companies-pending.yaml，**入册唯一通道是人工改 yaml + `npm run registry:apply`**（= gen:registry → sync → match:all → 候选状态回填；Worker 不写 repo 文件）。解析段对「主角不在候选清单」的条目判无主导（不硬选、不写建议）并把缺的公司落成候选（ADR-0017）。
 5. **归属规则**：段一确定性匹配（0 命中 missing_owner、1 家单归属 role=NULL、多家并列待裁决）→ LLM 裁决回填 role（primary/partner/subject）。存量 323 条已全量回填（primary=323/partner=95/subject=403）；人工纠错 `UPDATE enrich_cache.result` 后 `npm run enrich -- --apply --item=<id>` 零 LLM 重应用。
 6. **角色权限**：`requireAdmin(envToken, headerToken)` 纯函数——ADMIN_TOKEN 空=全开放（本地默认）；非空校验 `x-admin-token`。前端口令存 localStorage `juya-admin-token`（src/lib/auth.ts），AdminGate 组件探针 `/api/admin/ping` 验证。
 
@@ -77,13 +77,14 @@ src/lib/llm/propose.ts         # propose 三分类纯函数
 src/lib/llm/chat.ts            # chatJson（90s 超时+瞬时错误重试）/ runWithLimiter（脚本与 Worker 共享）
 scripts/lib/llm.ts             # .env 配置装载（LLM_BASE_URL/MODEL_NAME/LLM_API_KEY，re-export chat）
 scripts/enrich.ts              # 存量回填（npm run enrich）+ --apply 人工纠错重应用（零 LLM）
+scripts/registry-apply.ts      # 入册闭环：gen:registry → sync → match:all → 候选状态回填
 scripts/propose-companies.ts   # 候选公司提议（npm run propose:companies → data/companies-pending.yaml）
 src/lib/auth.ts                # 管理口令存取（localStorage juya-admin-token，注入 store 可测）
 src/components/common/AdminGate.tsx  # 口令输入条（探针 /api/admin/ping，403 不清空输入）
 src/components/review/         # StagedIssueList / ProposalEditor / CandidatePanel / PublishBar
 src/components/dashboard/      # chartMath + StatTiles/TrendLine/RankBars/EnrichDonut/SyncHeatmap
 src/lib/api.ts                 # 前端契约类型 + apiFetch（自动附 x-admin-token）+ fetchStats/review 封装
-docs/adr/0001-0015.md          # 15 枚 ADR（0015 三段制编辑工作流为最新口径）
+docs/adr/0001-0017.md          # 17 枚 ADR（0016 定时链路自动入库、0017 归属缺口兜底为最新口径）
 wrangler.jsonc                 # database_id 仍是占位符（部署日替换）；secrets 必须对象形态
 ```
 

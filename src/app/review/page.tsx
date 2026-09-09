@@ -12,6 +12,7 @@ import { StagedIssueList } from "@/components/review/StagedIssueList";
 import { SyncRunsTable } from "@/components/review/SyncRunsTable";
 import {
   ApiError,
+  CandidateStatus,
   CompanyIndexEntry,
   ParseJobStatus,
   ParseStatePayload,
@@ -25,6 +26,7 @@ import {
   fetchPendingReview,
   fetchReviewHistory,
   fetchSyncRuns,
+  patchReviewCandidate,
   patchReviewItem,
   publishReview,
   triggerParse,
@@ -276,6 +278,15 @@ export default function ReviewPage() {
     [companies]
   );
 
+  // 候选处置（spec16 决策 7）：标记已入册 / 忽略 → 成功后静默重拉 pending（候选从列表消失）
+  const disposeCandidate = useCallback(
+    async (id: string, status: CandidateStatus): Promise<void> => {
+      await patchReviewCandidate(id, status);
+      refreshPending();
+    },
+    [refreshPending]
+  );
+
   // 确认入库：POST /api/review/publish → 重拉 pending（已发布期消失）+ 入库汇总（③行随动）
   const publishDates = useCallback(
     async (dates: string[]): Promise<PublishOutcome> => {
@@ -381,7 +392,7 @@ export default function ReviewPage() {
                   companies={companies}
                   onPatch={patchItem}
                 />
-                <CandidatePanel candidates={data.candidates} />
+                <CandidatePanel candidates={data.candidates} onDispose={disposeCandidate} />
               </>
             )}
             {(status === "ready" || status === "empty") && (

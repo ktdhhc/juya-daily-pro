@@ -77,6 +77,13 @@ describe("buildEnrichPrompt", () => {
     expect(user).toContain("reason");
   });
 
+  it("无主导规则在场：主体公司不在候选清单 → primary_company_id 返回 null（reason 仍必填）", () => {
+    const { system, user } = buildEnrichPrompt(hy4Item, hy4Candidates);
+    expect(system).toContain("不在候选清单"); // 规则触发条件（spec16 决策 1）
+    expect(system).toMatch(/primary_company_id[\s\S]{0,60}null/); // 规则出口：返回 null
+    expect(user).toContain("null"); // user 任务行不再要求硬选一个候选
+  });
+
   it("bodyMd 恰 4000 字符 → 不截断，全文在场", () => {
     const item: EnrichItem = { title: "t", summary: "s", bodyMd: "Y".repeat(4000) };
     const { user } = buildEnrichPrompt(item, hy4Candidates);
@@ -138,6 +145,25 @@ describe("parseEnrichResponse", () => {
   it("reason 空串 / 纯空白 → null", () => {
     expect(parseEnrichResponse('{"primary_company_id": "openai", "reason": ""}', ids)).toBeNull();
     expect(parseEnrichResponse('{"primary_company_id": "openai", "reason": "  "}', ids)).toBeNull();
+  });
+
+  it("合法无主导：primary_company_id 为 null + 非空 reason → { primaryId: null, reason }（非解析失败）", () => {
+    expect(
+      parseEnrichResponse('{"primary_company_id": null, "reason": "主角公司不在候选清单"}', ids),
+    ).toEqual({ primaryId: null, reason: "主角公司不在候选清单" });
+  });
+
+  it("无主导但缺 reason / reason 空串纯空白 → null（无主导判定同样必填 reason）", () => {
+    expect(parseEnrichResponse('{"primary_company_id": null}', ids)).toBeNull();
+    expect(parseEnrichResponse('{"primary_company_id": null, "reason": ""}', ids)).toBeNull();
+    expect(parseEnrichResponse('{"primary_company_id": null, "reason": "  "}', ids)).toBeNull();
+  });
+
+  it("primary_company_id 非 null 非字符串（数字/布尔/对象/数组）→ null（响应不合法）", () => {
+    expect(parseEnrichResponse('{"primary_company_id": 42, "reason": "x"}', ids)).toBeNull();
+    expect(parseEnrichResponse('{"primary_company_id": true, "reason": "x"}', ids)).toBeNull();
+    expect(parseEnrichResponse('{"primary_company_id": {"id": "openai"}, "reason": "x"}', ids)).toBeNull();
+    expect(parseEnrichResponse('{"primary_company_id": ["openai"], "reason": "x"}', ids)).toBeNull();
   });
 
   it("围栏残缺（无闭合 ```）→ null", () => {

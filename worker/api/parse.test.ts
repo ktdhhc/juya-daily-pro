@@ -9,11 +9,16 @@ import {
   assemblePending,
   autoPublishDates,
   buildPublishedMissingRolesQuery,
+  buildUnregisteredCandidateSourcesQuery,
+  itemMentionsCandidateName,
+  candidateStatusSql,
+  mergeCandidateReason,
   patchStatements,
   proposalUpsertSql,
   proposeInsertSql,
   publishDateStatements,
   selectParseTargets,
+  validateCandidatePatchBody,
   validatePatchBody,
   type OwnerCompanyInput,
   type PendingCandidateRow,
@@ -149,7 +154,7 @@ describe("selectParseTargets", () => {
 // ---------- SQL 生成 ----------
 
 describe("proposeInsertSql", () => {
-  it("单行 INSERT：含 ON CONFLICT(id) DO NOTHING（已有同名建议不覆盖）与 aliases JSON", () => {
+  it("单行 INSERT：冲突只更新 reason（证据合并），name/aliases/confidence/来源/status 保留既有值", () => {
     const sql = proposeInsertSql([
       {
         id: "mistral-ai",
@@ -162,12 +167,18 @@ describe("proposeInsertSql", () => {
     ]);
     expect(sql).toContain("INSERT INTO company_candidates");
     expect(sql).toContain("(id, name, aliases, confidence, reason, source_item_id)");
-    expect(sql).toContain("ON CONFLICT(id) DO NOTHING;");
+    // spec16 决策 5：同公司再次被提议 → 合并证据（reason 覆盖为调用方算好的合并值）
+    expect(sql).toContain("ON CONFLICT(id) DO UPDATE SET reason = excluded.reason;");
+    expect(sql).not.toContain("DO NOTHING");
     expect(sql).toContain(`'["Mistral","Le Chat"]'`);
     expect(sql).toContain("'mistral-ai'");
     expect(sql).toContain("'20260829-3'");
     expect(sql.endsWith(";")).toBe(true);
-    expect(sql).not.toContain("status"); // status 走表默认 'pending'
+    expect(sql).not.toContain("status"); // status 走表默认 'pending'；已 dismissed/registered 的候选不被改回
+    // 既有 name/aliases/confidence/来源条目 id 一律保留（首个来源作溯源）
+    for (const col of ["name", "aliases", "confidence", "source_item_id"]) {
+      expect(sql).not.toContain(`${col} = excluded.${col}`);
+    }
   });
 
   it("文本转义：单引号翻倍；多行 VALUES 逗号分隔", () => {
@@ -182,6 +193,33 @@ describe("proposeInsertSql", () => {
 
   it("空数组 → 空串（不产生语句）", () => {
     expect(proposeInsertSql([])).toBe("");
+  });
+});
+
+// ---------- mergeCandidateReason（spec16 决策 5：候选证据合并） ----------
+
+describe("mergeCandidateReason", () => {
+  it("新证据追加在既有段之后（顺序稳定，`；` 分隔）", () => {
+    expect(mergeCandidateReason("法国 AI 公司", "发布 Le Chat")).toBe("法国 AI 公司；发布 Le Chat");
+    expect(mergeCandidateReason("甲；乙", "丙")).toBe("甲；乙；丙");
+  });
+
+  it("去重：新证据与既有段重复 → 只保留首次出现", () => {
+    expect(mergeCandidateReason("甲；乙", "乙；丙")).toBe("甲；乙；丙");
+    expect(mergeCandidateReason("甲；乙", "甲；乙")).toBe("甲；乙");
+  });
+
+  it("上限 5 段：已满不再追加，超出部分丢弃", () => {
+    expect(mergeCandidateReason("1；2；3；4；5", "6")).toBe("1；2；3；4；5");
+    expect(mergeCandidateReason("1；2；3", "4；5；6")).toBe("1；2；3；4；5");
+  });
+
+  it("段内空白规整为单行（连续空白/换行折叠）+ 空段丢弃", () => {
+    expect(mergeCandidateReason(" 甲 ；；乙 ", "丙\n\n多  空格")).toBe("甲；乙；丙 多 空格");
+  });
+
+  it("既有 reason 为空（首次落候选）→ 等于新证据", () => {
+    expect(mergeCandidateReason("", "首发证据")).toBe("首发证据");
   });
 });
 
@@ -446,6 +484,56 @@ describe("patchStatements", () => {
   });
 });
 
+// ---------- spec16 决策 7：候选状态校验与 SQL 生成（PATCH /api/review/candidate） ----------
+
+describe("validateCandidatePatchBody", () => {
+  it("合法 body（registered / dismissed）→ ok:true 且原样归一", () => {
+    expect(validateCandidatePatchBody({ id: "runway", status: "registered" })).toEqual({
+      ok: true,
+      id: "runway",
+      status: "registered",
+    });
+    expect(validateCandidatePatchBody({ id: "runway", status: "dismissed" })).toEqual({
+      ok: true,
+      id: "runway",
+      status: "dismissed",
+    });
+  });
+
+  it("status 非法 / 缺失 / 非字符串 → ok:false（仅接受 registered/dismissed）", () => {
+    expect(validateCandidatePatchBody({ id: "x", status: "pending" }).ok).toBe(false);
+    expect(validateCandidatePatchBody({ id: "x", status: "REGISTERED" }).ok).toBe(false);
+    expect(validateCandidatePatchBody({ id: "x" }).ok).toBe(false);
+    expect(validateCandidatePatchBody({ id: "x", status: 1 }).ok).toBe(false);
+  });
+
+  it("id 缺失 / 空串 / body 非对象 → ok:false", () => {
+    expect(validateCandidatePatchBody({ status: "registered" }).ok).toBe(false);
+    expect(validateCandidatePatchBody({ id: "  ", status: "registered" }).ok).toBe(false);
+    expect(validateCandidatePatchBody(null).ok).toBe(false);
+    expect(validateCandidatePatchBody([1]).ok).toBe(false);
+  });
+});
+
+describe("candidateStatusSql", () => {
+  it("单语句单行 UPDATE：只改 company_candidates.status，不触碰 Registry 与其它列", () => {
+    const sql = candidateStatusSql("runway", "registered");
+    expect(sql).toBe("UPDATE company_candidates SET status = 'registered' WHERE id = 'runway';");
+    expect(sql.includes("\n")).toBe(false);
+    // 不写 Registry、不改 name/aliases/confidence/reason/来源（spec16 决策 7）
+    expect(sql).not.toContain("UPDATE companies");
+    for (const col of ["name", "aliases", "confidence", "reason", "source_item_id"]) {
+      expect(sql).not.toContain(col);
+    }
+  });
+
+  it("id 单引号转义；dismissed 原样落值", () => {
+    expect(candidateStatusSql("o'brien", "dismissed")).toBe(
+      "UPDATE company_candidates SET status = 'dismissed' WHERE id = 'o''brien';",
+    );
+  });
+});
+
 // ---------- selectParseTargets 已发布补救类合并（spec11 契约 B） ----------
 
 describe("selectParseTargets 已发布补救类合并", () => {
@@ -498,6 +586,24 @@ describe("selectParseTargets 已发布补救类合并", () => {
     expect(q.sql).toContain(">= 2");
     expect(q.params).toEqual([]);
   });
+
+  it("buildUnregisteredCandidateSourcesQuery：待处置与已忽略的候选都暂停圈题（已入册才解除闸门）", () => {
+    const q = buildUnregisteredCandidateSourcesQuery(["20260901-5", "20260901-6"]);
+    expect(q.sql).toContain("SELECT source_item_id FROM company_candidates");
+    expect(q.sql).toContain("status IN ('pending','dismissed')");
+    expect(q.sql).toContain("source_item_id IN (?,?)");
+    expect(q.params).toEqual(["20260901-5", "20260901-6"]);
+  });
+
+  it("itemMentionsCandidateName：标题/正文命中未入册候选公司名（大小写不敏感）→ true；空名单/未命中 → false", () => {
+    const item = { title: "Inception Labs 发布 Mercury 2.5", bodyMd: "正文顺带提到 Runway" };
+    expect(itemMentionsCandidateName(item, ["Inception Labs"])).toBe(true);
+    expect(itemMentionsCandidateName(item, ["inception labs"])).toBe(true);
+    expect(itemMentionsCandidateName(item, ["Runway"])).toBe(true);
+    expect(itemMentionsCandidateName(item, ["OpenAI"])).toBe(false);
+    expect(itemMentionsCandidateName(item, [])).toBe(false);
+    expect(itemMentionsCandidateName(item, ["  "])).toBe(false);
+  });
 });
 
 // ---------- 缺公司候选跳过闸门（spec12 走查发现：已提议候选的 missing_owner 不再重调 LLM） ----------
@@ -525,6 +631,30 @@ describe("selectParseTargets 候选已提议跳过", () => {
     );
     expect(targets.missingTargets).toHaveLength(1);
     expect(targets.missingTargets[0]?.itemId).toBe("20260901-5");
+  });
+
+  it("多家命中且已有待处置候选 → 不进 enrichTargets（spec16 决策 4：闸门覆盖零命中与多家命中）", () => {
+    const targets = selectParseTargets(
+      [item({ id: "20260829-1", enrichState: "ok" })],
+      [OWNER_OPENAI, OWNER_ANTHROPIC],
+      new Set(),
+      [],
+      new Set(["20260829-1"]),
+    );
+    expect(targets.enrichTargets).toHaveLength(0);
+    expect(targets.missingTargets).toHaveLength(0);
+  });
+
+  it("多家命中但候选已处置（不在 pending 集合）→ 重新可解析进 enrichTargets", () => {
+    const targets = selectParseTargets(
+      [item({ id: "20260829-1", enrichState: "ok" })],
+      [OWNER_OPENAI, OWNER_ANTHROPIC],
+      new Set(),
+      [],
+      new Set(["20260830-9"]),
+    );
+    expect(targets.enrichTargets).toHaveLength(1);
+    expect(targets.enrichTargets[0]?.itemId).toBe("20260829-1");
   });
 });
 

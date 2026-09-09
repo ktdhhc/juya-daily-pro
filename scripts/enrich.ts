@@ -273,6 +273,10 @@ async function main(): Promise<void> {
             if (parsed === null) {
               return { entry, ok: false, error: `响应不合法（前 120 字符）：${raw.slice(0, 120)}` };
             }
+            if (parsed.primaryId === null) {
+              // spec16：合法无主导——候选清单里没有主角，无角色可回写，记入失败清单待人工
+              return { entry, ok: false, error: `无主导（候选清单中无主体公司）：${parsed.reason}` };
+            }
             const verdicts = deriveRoles(entry.item, entry.candidates, parsed.primaryId, parsed.reason);
             return { entry, ok: true, verdicts };
           } catch (err) {
