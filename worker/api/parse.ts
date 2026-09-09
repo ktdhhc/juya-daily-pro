@@ -24,6 +24,7 @@ import {
   parseStateUpsertSql,
   type ParseStatePayload,
   type ParseStateRow,
+  type ParseStateStatus,
   type ParseStateWrite,
 } from "./parse-state";
 import { chunkArray, MAX_BOUND_PARAMS } from "./queries";
@@ -494,8 +495,30 @@ export function publishDateStatements(dates: string[]): string[] {
   ];
 }
 
-// 单条 proposal 条目的应用语句组（同 PATCH 语义：删后插 + enrich_state='ok' + enrich_cache 写入，
-// result=owners JSON、llm_model）。返回单语句单行数组，调用方并入 D1 batch（部分失败整体回滚）。
+// ---------- 定时链路自动入库决策（ADR-0016，纯函数） ----------
+
+// 决策所需的最小终态摘要（不依赖整行形态，便于单测）
+export interface ParseFinalState {
+  status: ParseStateStatus;
+  processed: number;
+  total: number;
+}
+
+// 定时链路自动入库决策（ADR-0016）：本轮暂存期 → 可自动入库的期清单（去重、升序）。
+// - parse = null（本轮无待解析目标，跳过解析）→ 入库；
+// - status !== 'done'（failed / running / idle）→ 不入库：异常路径留人工（ADR-0015 手动链路不变）；
+// - 整轮零成功（total > 0 且 processed === 0）→ 不入库：LLM 链路疑似故障，宁可留人工也不上错数据；
+// - 其余（done，含个别条目失败）→ 入库：失败条目不应用 proposal，按其确定性归属入库。
+export function autoPublishDates(stagedDates: string[], parse: ParseFinalState | null): string[] {
+  if (stagedDates.length === 0) return [];
+  if (parse !== null) {
+    if (parse.status !== "done") return [];
+    if (parse.total > 0 && parse.processed === 0) return [];
+  }
+  return [...new Set(stagedDates)].sort();
+}
+
+// 单条 proposal 条目的应用语句组（同 PATCH 语义：删后插 + enrich_state='ok' + enrich_cache 写入，// result=owners JSON、llm_model）。返回单语句单行数组，调用方并入 D1 batch（部分失败整体回滚）。
 export function applyProposalStatements(
   itemId: string,
   owners: PatchOwner[],

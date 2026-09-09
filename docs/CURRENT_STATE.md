@@ -14,12 +14,12 @@
 
 ## 当前阶段
 
-**✅ 已上线（2026-09-09 部署完成）**：生产 Worker `https://juya-daily-sync.ktdhhc9527.workers.dev`（D1 `juya-daily` id `311f10ee-f6f0-4dc1-b10d-44e8a3ce7ee7`，cron 北京 08:00-10:30 每半点自动同步+解析、不自动入库）；前端 Pages `https://juya-daily.pages.dev`（`functions/` 同域代理 `/api/*`，项目变量 `WORKER_ORIGIN` 已配）；生产数据 83 期 / 1248 条 / 39 家 / 归属率 89.3%，归属主次已回填（`npm run enrich -- --remote`：primary=359 / partner=99 / subject=455，失败 8 条为超时/写库抖动，可重跑）；`ADMIN_TOKEN` 与 `LLM_API_KEY` 经 `wrangler deploy --secrets-file .prod.secrets` 注入（无口令访问受守卫端点 403 已实测）。**剩余可选项**：①首页迁移 read API（ADR-0013 允许延后，现仍直连 daily.juya.uk）②自定义域名（可选）。**部署方式（2026-09-09 起）**：Pages 项目 `juya-daily-pro` 已连 GitHub 仓库 `ktdhhc/juya-daily-pro`，**生产分支 `main`**，构建配置 `npm run build` → 输出 `out`（Pages Function `functions/` 与 `public/_routes.json` 随构建自动生效）；**推送到 main 即自动构建部署生产**，推送其他分支（如 feature/pro）产出预览部署（`https://<short-id>.juya-daily.pages.dev`）。Worker 改动仍需手动 `wrangler deploy --secrets-file .prod.secrets`。直接上传（`wrangler pages deploy out`）仍可用作应急，但会被 Git 部署覆盖为最新。
+**✅ 已上线（2026-09-09 部署完成）**：生产 Worker `https://juya-daily-sync.ktdhhc9527.workers.dev`（D1 `juya-daily` id `311f10ee-f6f0-4dc1-b10d-44e8a3ce7ee7`，cron 北京 08:00-10:30 每半点自动同步+解析+**自动入库**（ADR-0016，异常留人工））；前端 Pages `https://juya-daily.pages.dev`（`functions/` 同域代理 `/api/*`，项目变量 `WORKER_ORIGIN` 已配）；生产数据 83 期 / 1248 条 / 39 家 / 归属率 89.3%，归属主次已回填（`npm run enrich -- --remote`：primary=359 / partner=99 / subject=455，失败 8 条为超时/写库抖动，可重跑）；`ADMIN_TOKEN` 与 `LLM_API_KEY` 经 `wrangler deploy --secrets-file .prod.secrets` 注入（无口令访问受守卫端点 403 已实测）。**剩余可选项**：①首页迁移 read API（ADR-0013 允许延后，现仍直连 daily.juya.uk）②自定义域名（可选）。**部署方式（2026-09-09 起）**：Pages 项目 `juya-daily-pro` 已连 GitHub 仓库 `ktdhhc/juya-daily-pro`，**生产分支 `main`**，构建配置 `npm run build` → 输出 `out`（Pages Function `functions/` 与 `public/_routes.json` 随构建自动生效）；**推送到 main 即自动构建部署生产**，推送其他分支（如 feature/pro）产出预览部署（`https://<short-id>.juya-daily.pages.dev`）。Worker 改动仍需手动 `wrangler deploy --secrets-file .prod.secrets`。直接上传（`wrangler pages deploy out`）仍可用作应急，但会被 Git 部署覆盖为最新。
 
 ## 范围边界
 
 - 做：三视图（/stream、/company、/company/[id]）+ /review 审核页 + /dashboard 面板 + D1 八表（含 published 暂存列、item_proposals、company_candidates）+ read/parse/review API + 三段制编辑工作流 + 确定性白名单匹配 + LLM 裁决回填。
-- 暂不做：RAG / Vectorize / 语义检索 / 话题聚类 / 用户账号多级权限 / 自动发布（publish 恒为人工确认）/ 候选公司自动入册。
+- 暂不做：RAG / Vectorize / 语义检索 / 话题聚类 / 用户账号多级权限 / 候选公司自动入册。（定时链路已按 ADR-0016 自动入库；手动链路仍恒人工确认。）
 
 ## 当前架构
 
@@ -34,7 +34,7 @@
 
 ## 主流程关键事实
 
-1. **三段制编辑工作流（ADR-0015）**：`POST /api/sync` 或同步按钮 → 新数据 **published=0 暂存**（访客不可见，同步段零 LLM；响应含 stagedDates）→ 管理员在 /review 点「解析」→ `POST /api/parse` 对暂存条目 LLM 裁决（多家命中判 primary + deriveRoles 补 partner/subject；missing_owner 三分类出候选公司）→ /review 逐条检查/编辑（PATCH item 重写归属）→ 「确认入库」`POST /api/review/publish` 原子发布（published 0→1 + 应用 proposal + 写 enrich_cache）。upsert 的 DO UPDATE 一律**不含 published**（重同步不翻转状态）。**日常运行事实**：cron 只写暂存 → 每天新数据**不会自动**出现在 /stream、/company（二者只读 published=1），必须人工在 /review「确认入库」；日报页 `/` 直连 daily.juya.uk，所以它总是最新的——「日报页更新了、事件流/公司没更新」是设计行为而非故障。
+1. **编辑工作流（ADR-0015 + ADR-0016）**：`POST /api/sync` 或同步按钮 → 新数据 **published=0 暂存**（访客不可见，同步段零 LLM；响应含 stagedDates）→ 解析（`POST /api/parse` 对暂存条目 LLM 裁决：多家命中判 primary + deriveRoles 补 partner/subject；missing_owner 三分类出候选公司）→ 入库 `POST /api/review/publish`（原子发布：published 0→1 + 应用 proposal + 写 enrich_cache）。upsert 的 DO UPDATE 一律**不含 published**（重同步不翻转状态）。**两条链路**：①**定时链路自动**——cron 同步无失败且本轮有暂存期时，解析跑完按终态自动入库（`worker/sync/index.ts` scheduled + `autoPublishDates` 纯函数）；异常（同步失败 / 解析失败 / 整轮零成功 / 解析进行中）一律**不入库**，暂存留人工，下一轮 cron 自愈；②**手动链路恒人工**——同步按钮/接口只写暂存，/review 逐条检查/编辑（PATCH item 重写归属）后「确认入库」；审核台从每日必经降级为抽查 + 异常补救入口。日报页 `/` 直连 daily.juya.uk，始终最新。
 2. **前端取数**：全部视图走相对路径 `/api/*`（dev 由 next.config rewrites 代理到 wrangler dev :8787）；首页 `/` 仍直连 daily.juya.uk（部署日迁移，ADR-0013）。fetch 统一走 `src/lib/api.ts` 的 apiFetch（本地存有管理口令时自动附 `x-admin-token`）。
 3. **手机端适配（<640px 断点）**：报头拆两行——顶行品牌 + 图标（搜索/同步/合订本/复制/主题），第二行 `.m-nav` 横滚导航（日报/事件流/公司/面板 + 审核/管理），桌面端 `.nav-link` 三联不变；`/stream` 左栏在手机端改底部抽屉（`筛选` 按钮 → `#stream-filter-sheet`，选公司/分类即收起）；公司索引手机端两列；`html/body` 横向裁剪用 `overflow-x: clip`（**不可改回 hidden**：hidden 会让 html/body 成滚动容器，iOS 下窗口滚动失效、root=null 的 IntersectionObserver 永不触发 → 公司页/事件流滚动加载不动、sticky 失效）；滚动加载另有 capture 阶段 scroll 兜底（哨兵视口坐标判定）。Tailwind `hidden`/`sm:hidden` 会被非分层的自定义类（`.icon-btn`/`.m-nav`/`.facet-chip`）盖过，响应式显隐用 `.only-mobile`/`.only-desktop`。
 4. **白名单闸门**：`data/companies.yaml` 唯一真相源，sync 幂等 upsert D1 companies。候选公司只进 company_candidates 表/companies-pending.yaml，**入册唯一通道是人工改 yaml + `npm run gen:registry`**（Worker 不写 repo 文件）。
@@ -45,7 +45,7 @@
 
 - `data/companies.yaml` 是 Company Registry 唯一真相源（ADR-0001），手动同步 D1 会引入双写源。
 - Item 主键 `YYYYMMDD-N`、保留 `body_md`、`summary` 不二次补全（ADR-0002）。
-- 同步段零 LLM（ADR-0014 缩窄版，ADR-0015）；publish 恒为人工确认，不做自动发布。
+- 同步段零 LLM（ADR-0014 缩窄版，ADR-0015）；手动链路 publish 恒为人工确认；定时链路自动入库的闸门与例外见 ADR-0016（改动前先读它）。
 - 同期同主话题补丁不折叠、跨期同主题也不合并（CONTEXT.md）。
 - itemCompaniesUpsertSql 用 `COALESCE(excluded.role, item_companies.role)`——同步传 NULL role **不得清掉** enrich 已写 role（防清摆，spec09）。
 - 部署动作（cron / Pages / 首页迁移）集中在部署日（ADR-0013）。

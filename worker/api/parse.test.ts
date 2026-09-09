@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyProposalStatements,
   assemblePending,
+  autoPublishDates,
   buildPublishedMissingRolesQuery,
   patchStatements,
   proposalUpsertSql,
@@ -706,5 +707,52 @@ describe("parseStateUpsertSql", () => {
     expect(sql).toContain(", NULL, '2026-09-02T12:01:00.000Z'");
     expect(sql.includes("\n")).toBe(false);
     expect(sql.endsWith(";")).toBe(true);
+  });
+});
+
+// ---------- autoPublishDates（定时链路自动入库决策，ADR-0016） ----------
+
+describe("autoPublishDates", () => {
+  it("无待解析目标（parse=null）→ 入库全部暂存期（去重、升序）", () => {
+    expect(autoPublishDates(["2026-09-09", "2026-09-08", "2026-09-09"], null)).toEqual([
+      "2026-09-08",
+      "2026-09-09",
+    ]);
+  });
+
+  it("解析 done 且全部成功 → 入库", () => {
+    expect(autoPublishDates(["2026-09-09"], { status: "done", processed: 9, total: 9 })).toEqual([
+      "2026-09-09",
+    ]);
+  });
+
+  it("解析 done 但有部分条目失败（processed < total）→ 仍入库（失败条目不应用建议）", () => {
+    expect(autoPublishDates(["2026-09-09"], { status: "done", processed: 7, total: 9 })).toEqual([
+      "2026-09-09",
+    ]);
+  });
+
+  it("解析 failed → 不入库（异常留人工）", () => {
+    expect(autoPublishDates(["2026-09-09"], { status: "failed", processed: 3, total: 9 })).toEqual([]);
+  });
+
+  it("解析 running / idle → 不入库", () => {
+    expect(autoPublishDates(["2026-09-09"], { status: "running", processed: 1, total: 9 })).toEqual([]);
+    expect(autoPublishDates(["2026-09-09"], { status: "idle", processed: 0, total: 0 })).toEqual([]);
+  });
+
+  it("整轮零成功（total>0 且 processed=0）→ 不入库（LLM 链路疑似故障）", () => {
+    expect(autoPublishDates(["2026-09-09"], { status: "done", processed: 0, total: 9 })).toEqual([]);
+  });
+
+  it("done 且 total=0（空圈题）→ 入库", () => {
+    expect(autoPublishDates(["2026-09-09"], { status: "done", processed: 0, total: 0 })).toEqual([
+      "2026-09-09",
+    ]);
+  });
+
+  it("空暂存期 → 空数组", () => {
+    expect(autoPublishDates([], { status: "done", processed: 0, total: 0 })).toEqual([]);
+    expect(autoPublishDates([], null)).toEqual([]);
   });
 });
