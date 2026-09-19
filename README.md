@@ -62,6 +62,14 @@ v1 不部署。Cloudflare Pages / Worker deploy / cron 启用集中在阶段 6�
 
 [daily.juya.uk](https://daily.juya.uk) 由作者维护的每日 AI 资讯合集，提供 `/archive/` 期次索引与 `/markdown/<YYYY-MM-DD>.md` 原文。
 
+**内容版权归原作者（橘鸦 AI 日报）所有**，不适用本仓库的代码许可；本仓库不含内容原文，运行时抓取并在站内署名、链接回源站。若原作者有异议，停止抓取/下架即可，见下节。
+
+## 来源与致谢
+
+- 本仓库是 **[ViggoZ/juya-daily](https://github.com/ViggoZ/juya-daily)** 的 fork（GitHub 上的 fork 关系与上游提交历史均保留）。上游作者：ViggoZ。
+- 二次开发部分（本仓库在 fork 之后新增）：D1 数据层 + Cloudflare Worker（同步 / 解析 / 审核 API）、事件流与公司两视图、审核台、数据面板、定时自动同步与自动入库、手机端适配等，详见 `docs/`。
+- 本项目为**非官方**第三方界面，与内容原作者及上游作者均无从属关系。
+
 ## 项目结构
 
 ```text
@@ -84,4 +92,4 @@ juya-daily-pro/
 
 ## License
 
-ISC
+[ISC](./LICENSE) —— 与上游 [ViggoZ/juya-daily](https://github.com/ViggoZ/juya-daily) 一致。`LICENSE` 中的版权行同时保留上游作者（ViggoZ）与本仓库二次开发者的版权声明；fork / 分发本仓库时须按 ISC 条款保留该版权声明与许可声明。
