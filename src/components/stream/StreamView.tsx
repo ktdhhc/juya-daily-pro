@@ -362,9 +362,10 @@ export function StreamView() {
         </main>
       </div>
 
-      {/* 手机端筛选抽屉（<640px）：底部面板自带滚动，遮罩点击收起；桌面不渲染 */}
+      {/* 手机端筛选抽屉（<640px）：底部面板自带滚动，遮罩点击收起；桌面不渲染。
+          z-[60] 高于冻结报头（sticky z-50）——模态抽屉必须盖住报头，否则报头浮在遮罩之上仍可点。 */}
       {filtersOpen && (
-        <div className="fixed inset-0 z-40 sm:hidden" role="dialog" aria-modal="true" aria-label="筛选" id="stream-filter-sheet">
+        <div className="fixed inset-0 z-[60] sm:hidden" role="dialog" aria-modal="true" aria-label="筛选" id="stream-filter-sheet">
           <button
             type="button"
             className="absolute inset-0 overlay-backdrop"
